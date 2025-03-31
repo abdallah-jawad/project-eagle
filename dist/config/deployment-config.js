@@ -1,0 +1,8 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.deploymentConfig = void 0;
+exports.deploymentConfig = {
+    myIpAddress: '70.175.157.61',
+    keyPairName: 'cdk-keypair' // Replace with key pair name
+};
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiZGVwbG95bWVudC1jb25maWcuanMiLCJzb3VyY2VSb290IjoiIiwic291cmNlcyI6WyIuLi8uLi9jb25maWcvZGVwbG95bWVudC1jb25maWcudHMiXSwibmFtZXMiOltdLCJtYXBwaW5ncyI6Ijs7O0FBS2EsUUFBQSxnQkFBZ0IsR0FBcUI7SUFDaEQsV0FBVyxFQUFFLGVBQWU7SUFDNUIsV0FBVyxFQUFFLGFBQWEsQ0FBRSw2QkFBNkI7Q0FDMUQsQ0FBQyIsInNvdXJjZXNDb250ZW50IjpbImV4cG9ydCBpbnRlcmZhY2UgRGVwbG95bWVudENvbmZpZyB7XHJcbiAgbXlJcEFkZHJlc3M6IHN0cmluZztcclxuICBrZXlQYWlyTmFtZTogc3RyaW5nO1xyXG59XHJcblxyXG5leHBvcnQgY29uc3QgZGVwbG95bWVudENvbmZpZzogRGVwbG95bWVudENvbmZpZyA9IHtcclxuICBteUlwQWRkcmVzczogJzcwLjE3NS4xNTcuNjEnLCAgXHJcbiAga2V5UGFpck5hbWU6ICdjZGsta2V5cGFpcicgIC8vIFJlcGxhY2Ugd2l0aCBrZXkgcGFpciBuYW1lXHJcbn07ICJdfQ==
