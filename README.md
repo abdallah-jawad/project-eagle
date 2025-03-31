@@ -4,7 +4,7 @@ A CDK application for a computer vision solution built by @Abdulla Khalid and @M
 
 ## Architecture
 
-The application consists of two main stacks:
+The application currently consists of two main stacks, many more to come:
 
 1. **RTSP to KVS Stack**: Streams RTSP camera feeds to Amazon Kinesis Video Streams
 2. **Computer Vision Stack**: Processes the video streams using computer vision models
@@ -60,7 +60,7 @@ The application uses a configuration system to manage customers and their camera
 
 ## Prerequisites
 
-- Node.js 18 or later
+- Node.js 20 or later
 - AWS CDK CLI
 - AWS CLI configured with appropriate credentials
 - An AWS account with appropriate permissions
@@ -103,8 +103,6 @@ cdk deploy RtspKvsStack
 cdk deploy ComputerVisionStack
 ```
 
-Note: The IP address is used to restrict SSH access to the EC2 instance. The default value '0.0.0.0/0' allows access from anywhere (not recommended for production).
-
 ## Monitoring
 
 - CloudWatch Logs for EC2 instance and Lambda functions
@@ -123,7 +121,6 @@ Note: The IP address is used to restrict SSH access to the EC2 instance. The def
 - Single EC2 instance for all customers
 - Shared VPC and networking resources
 - Instance type automatically selected based on camera count
-- Support for different quality profiles
 
 ## Troubleshooting
 
@@ -131,14 +128,6 @@ Note: The IP address is used to restrict SSH access to the EC2 instance. The def
 2. Verify RTSP URLs are accessible
 3. Check instance metrics for resource constraints
 4. Review security group settings
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
 
 ## License
 
