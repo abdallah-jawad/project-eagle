@@ -35,14 +35,35 @@ export class RtspKvsStack extends cdk.Stack {
       description: 'Allow SSH (TCP port 22) in',
       allowAllOutbound: true
     });
-    securityGroup.addIngressRule(ec2.Peer.ipv4(`${props.myIpAddress}/32`), ec2.Port.tcp(22), 'Allow SSH Access');
+
+    // Allow SSH from EC2 Instance Connect service
+    securityGroup.addIngressRule(
+      ec2.Peer.prefixList('pl-0e4bcff02b13bef1e'),
+      ec2.Port.tcp(22),
+      'Allow EC2 Instance Connect'
+    );
+
+    // Allow SSH from your IP
+    securityGroup.addIngressRule(
+      ec2.Peer.ipv4(`${props.myIpAddress}/32`),
+      ec2.Port.tcp(22),
+      'Allow SSH Access'
+    );
 
     // Create a single IAM role for all instances
     const role = new iam.Role(this, 'ec2Role', {
       assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
       roleName: 'kvsCloudGatewayInstanceRole',
     });
+
+    // Add EC2 Instance Connect permissions
     role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'));
+    role.addToPolicy(new iam.PolicyStatement({
+      actions: [
+        'ec2-instance-connect:SendSSHPublicKey'
+      ],
+      resources: ['*']
+    }));
 
     // Create KVS streams for all cameras across all customers
     const streams: { [key: string]: kinesisvideo.CfnStream } = {};
@@ -64,6 +85,17 @@ export class RtspKvsStack extends cdk.Stack {
         'kinesisvideo:DescribeStream',
         'kinesisvideo:GetDataEndpoint',
         'kinesisvideo:TagStream'
+      ]
+    }));
+
+    // Add additional KVS permissions that might be needed
+    role.addToPolicy(new iam.PolicyStatement({
+      resources: ['*'],
+      actions: [
+        'kinesisvideo:CreateStream',
+        'kinesisvideo:DeleteStream',
+        'kinesisvideo:ListStreams',
+        'kinesisvideo:UpdateStream'
       ]
     }));
 
@@ -108,6 +140,12 @@ export class RtspKvsStack extends cdk.Stack {
       sudo ./aws/install && \
       rm awscliv2.zip`);
 
+    // Install EC2 Instance Connect
+    ec2Instance.userData.addCommands('sudo apt-get install -y ec2-instance-connect');
+    ec2Instance.userData.addCommands('sudo systemctl enable ec2-instance-connect');
+    ec2Instance.userData.addCommands('sudo systemctl start ec2-instance-connect');
+
+    // Install required packages for KVS producer SDK
     ec2Instance.userData.addCommands(`sudo apt-get install -y \
       libssl-dev \
       git \
@@ -131,6 +169,14 @@ export class RtspKvsStack extends cdk.Stack {
       flex \
       jq \
       make`);
+
+    // Create AWS credentials directory for ubuntu user
+    ec2Instance.userData.addCommands('sudo mkdir -p /home/ubuntu/.aws');
+    ec2Instance.userData.addCommands('sudo chown ubuntu:ubuntu /home/ubuntu/.aws');
+
+    // Create kvs_log_configuration file for ubuntu user
+    ec2Instance.userData.addCommands('sudo touch /home/ubuntu/kvs_log_configuration');
+    ec2Instance.userData.addCommands('sudo chown ubuntu:ubuntu /home/ubuntu/kvs_log_configuration');
 
     // Create an asset that will be used as part of User Data to run on first load
     const installKvsProducerSdkScript = new Asset(this, 'InstallKvsProducerSdkScript', { 

@@ -8,32 +8,18 @@ export const customerConfigs: CustomerConfig[] = [
     cameras: [
       {
         id: 'cam1',
-        name: 'Main Entrance',
-        rtspUrl: 'rtsp://camera1.example.com/stream1',
-        streamName: 'acme-main-entrance',
+        name: 'Test Camera 1',
+        rtspUrl: 'rtsp://admin:ProjectEagle%40AC@70.175.157.61:554',
+        streamName: 'test-camera-1',
         resolution: {
           width: 1920,
           height: 1080
         },
         fps: 30,
         bitrate: 4000,
-        location: 'Main Building Entrance',
-        description: '24/7 surveillance of main entrance'
+        location: 'Test Location 1',
+        description: 'Test Description 1'
       },
-      {
-        id: 'cam2',
-        name: 'Parking Lot',
-        rtspUrl: 'rtsp://camera2.example.com/stream1',
-        streamName: 'acme-parking-lot',
-        resolution: {
-          width: 1920,
-          height: 1080
-        },
-        fps: 30,
-        bitrate: 4000,
-        location: 'North Parking Lot',
-        description: 'Parking lot surveillance'
-      }
     ]
   }
 ]; 
