@@ -1,0 +1,16 @@
+[Unit]
+Description=Ingestion of RTSP stream to Kinesis Video Streams via gstreamer pipeline
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+Environment=LD_LIBRARY_PATH=/opt/amazon-kinesis-video-streams-producer-sdk-cpp/open-source/local/lib
+Environment=GST_PLUGIN_PATH=/opt/amazon-kinesis-video-streams-producer-sdk-cpp/build/
+Environment=AWS_DEFAULT_REGION=us-east-1
+ExecStart=/home/ubuntu/stream-rtsp-to-kvs.sh
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target 

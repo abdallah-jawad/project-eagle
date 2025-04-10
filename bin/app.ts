@@ -7,7 +7,8 @@ import { deploymentConfig } from '../config/deployment-config';
 
 const app = new cdk.App();
 
-new RtspKvsStack(app, 'RtspKvsStack', {
+// Create the RtspKvsStack first
+const rtspKvsStack = new RtspKvsStack(app, 'RtspKvsStack', {
   myIpAddress: deploymentConfig.myIpAddress,
   keyPairName: deploymentConfig.keyPairName,
   env: {
@@ -16,7 +17,9 @@ new RtspKvsStack(app, 'RtspKvsStack', {
   }
 });
 
+// Create the ComputerVisionStack and pass the VPC from RtspKvsStack
 new ComputerVisionStack(app, 'ComputerVisionStack', {
+  vpc: rtspKvsStack.vpc,
   env: {
     account: process.env.CDK_DEFAULT_ACCOUNT,
     region: process.env.CDK_DEFAULT_REGION

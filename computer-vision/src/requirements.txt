@@ -1,0 +1,2 @@
+# Python dependencies for Computer Vision application
+# No external dependencies required for the basic Hello World application 

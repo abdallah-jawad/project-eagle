@@ -1,0 +1,17 @@
+[Unit]
+Description=Computer Vision Hello World Service
+After=network.target
+
+[Service]
+Type=simple
+User=ec2-user
+WorkingDirectory=/home/ec2-user/computer-vision
+ExecStart=/usr/bin/python3 /home/ec2-user/computer-vision/src/computer_vision/app.py
+Restart=always
+RestartSec=5
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=computer-vision
+
+[Install]
+WantedBy=multi-user.target 

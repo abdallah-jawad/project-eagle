@@ -5,8 +5,8 @@ import * as kinesisvideo from 'aws-cdk-lib/aws-kinesisvideo';
 import * as path from 'path';
 import { Asset } from 'aws-cdk-lib/aws-s3-assets';
 import { Construct } from 'constructs';
-import { systemConfig } from '../config/system-config';
 import { customerConfigs } from '../config/customer-configs';
+import { InstanceTypeUtils } from './utils/instance-type-utils';
 
 export interface RtspKvsStackProps extends cdk.StackProps {
   myIpAddress: string;
@@ -14,11 +14,13 @@ export interface RtspKvsStackProps extends cdk.StackProps {
 }
 
 export class RtspKvsStack extends cdk.Stack {
+  public readonly vpc: ec2.IVpc;
+  
   constructor(scope: Construct, id: string, props: RtspKvsStackProps) {
     super(scope, id, props);
 
     // Create a single VPC for all customers
-    const vpc = new ec2.Vpc(this, 'VPC', {
+    this.vpc = new ec2.Vpc(this, 'VPC', {
       vpcName: 'KVS Cloud Gateway VPC',
       natGateways: 0,
       createInternetGateway: true,
@@ -31,7 +33,7 @@ export class RtspKvsStack extends cdk.Stack {
 
     // Create a single security group for all instances
     const securityGroup = new ec2.SecurityGroup(this, 'SecurityGroup', {
-      vpc,
+      vpc: this.vpc,
       description: 'Allow SSH (TCP port 22) in',
       allowAllOutbound: true
     });
@@ -100,10 +102,10 @@ export class RtspKvsStack extends cdk.Stack {
     }));
 
     // Calculate total number of cameras across all customers
-    const totalCameras = customerConfigs.reduce((sum, customer) => sum + customer.cameras.length, 0);
+    const totalCameras = InstanceTypeUtils.calculateTotalCameras();
     
     // Calculate required instance type based on total cameras
-    const requiredInstanceType = this.calculateInstanceType(totalCameras);
+    const requiredInstanceType = InstanceTypeUtils.calculateInstanceType(totalCameras);
     console.log(`Using instance type ${requiredInstanceType} for ${totalCameras} total cameras`);
 
     // Use Ubuntu Server 22.04
@@ -119,10 +121,10 @@ export class RtspKvsStack extends cdk.Stack {
     // Create a single EC2 instance to handle all cameras
     const ec2Instance = new ec2.Instance(this, 'Instance', {
       instanceName: 'kvs-rtsp-cloud-gateway',
-      vpc,
+      vpc: this.vpc,
       instanceType: ec2.InstanceType.of(
         ec2.InstanceClass.T3,
-        this.getInstanceSize(requiredInstanceType)
+        InstanceTypeUtils.getInstanceSize(requiredInstanceType)
       ),
       machineImage: ami,
       securityGroup: securityGroup,
@@ -180,13 +182,13 @@ export class RtspKvsStack extends cdk.Stack {
 
     // Create an asset that will be used as part of User Data to run on first load
     const installKvsProducerSdkScript = new Asset(this, 'InstallKvsProducerSdkScript', { 
-      path: path.join(__dirname, '../src/config.sh') 
+      path: path.join(__dirname, '../rtsp-kvs/src/config.sh') 
     });
     const serviceFile = new Asset(this, 'KvsServiceFile', { 
-      path: path.join(__dirname, '../src/stream-rtsp-to-kvs.service') 
+      path: path.join(__dirname, '../rtsp-kvs/src/stream-rtsp-to-kvs.service') 
     });
     const executionScript = new Asset(this, 'KvsExecutionScript', { 
-      path: path.join(__dirname, '../src/stream-rtsp-to-kvs.sh') 
+      path: path.join(__dirname, '../rtsp-kvs/src/stream-rtsp-to-kvs.sh') 
     });
 
     installKvsProducerSdkScript.grantRead(ec2Instance.role);
@@ -249,21 +251,5 @@ export class RtspKvsStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'ssh command', { 
       value: 'ssh -i cdk-key.pem -o IdentitiesOnly=yes ec2-user@' + ec2Instance.instancePublicIp 
     });
-  }
-
-  private calculateInstanceType(numCameras: number): string {
-    // Find the smallest instance type that can handle the number of cameras
-    for (const [type, specs] of Object.entries(systemConfig.instanceTypes)) {
-      if (specs.maxCameras >= numCameras) {
-        return type;
-      }
-    }
-    // If no instance type can handle the number of cameras, throw an error
-    throw new Error(`No instance type available to handle ${numCameras} cameras`);
-  }
-
-  private getInstanceSize(instanceType: string): ec2.InstanceSize {
-    const size = instanceType.split('.')[1].toUpperCase();
-    return ec2.InstanceSize[size as keyof typeof ec2.InstanceSize];
   }
 } 
