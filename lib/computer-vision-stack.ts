@@ -68,38 +68,6 @@ export class ComputerVisionStack extends cdk.Stack {
       path: path.join(__dirname, '..', 'computer-vision/src'),
     });
 
-    // Grant the instance permission to read the application files
-    appFiles.grantRead(role);
-
-    // Create a user data script to install and run our application
-    const userData = ec2.UserData.forLinux();
-    
-    // Download application files
-    const appFilesPath = userData.addS3DownloadCommand({
-      bucket: appFiles.bucket,
-      bucketKey: appFiles.s3ObjectKey,
-      localFile: '/tmp/computer-vision.zip',
-    });
-    
-    // Install required packages
-    userData.addCommands(
-      'yum update -y',
-      'yum install -y python3 python3-pip unzip',
-      'pip3 install --user logging'
-    );
-    
-    // Extract application files
-    userData.addCommands(
-      'mkdir -p /tmp/computer-vision',
-      'unzip -o /tmp/computer-vision.zip -d /tmp/computer-vision/',
-      'chmod +x /tmp/computer-vision/setup.sh'
-    );
-    
-    // Run setup script
-    userData.addCommands(
-      'sudo bash /tmp/computer-vision/setup.sh'
-    );
-
     // Create the EC2 instance
     const ec2Instance = new ec2.Instance(this, 'ComputerVisionInstance', {
       vpc,
@@ -107,10 +75,54 @@ export class ComputerVisionStack extends cdk.Stack {
       machineImage: ec2.MachineImage.latestAmazonLinux2(),
       securityGroup,
       role,
-      keyName: deploymentConfig.keyPairName,
       vpcSubnets: {
         subnetType: ec2.SubnetType.PUBLIC,
       },
     });
+
+    // Grant the instance permission to read the application files
+    appFiles.grantRead(role);
+
+    // Add user data script
+    const userData = ec2Instance.userData;
+
+    // Add shebang and basic logging setup
+    userData.addCommands(
+      '#!/bin/bash',
+      '# UserData Version: 1.0',
+      'exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1', // Redirect stdout/stderr to log file and console
+      'echo "User data script started execution."'
+    );
+
+    // Install required packages
+    userData.addCommands(
+      'echo "Installing required packages..." >> /var/log/user-data.log',
+      'yum update -y >> /var/log/user-data.log 2>&1',
+      'yum install -y python3 python3-pip unzip aws-cli >> /var/log/user-data.log 2>&1',
+      'echo "Required packages installed." >> /var/log/user-data.log'
+    );
+
+    // Download application files
+    userData.addS3DownloadCommand({
+      bucket: appFiles.bucket,
+      bucketKey: appFiles.s3ObjectKey,
+      localFile: '/tmp/computer-vision.zip',
+    });
+    
+    // Extract application files
+    userData.addCommands(
+      'echo "Extracting application files..." >> /var/log/user-data.log',
+      'mkdir -p /tmp/computer-vision >> /var/log/user-data.log 2>&1',
+      'unzip -o /tmp/computer-vision.zip -d /tmp/computer-vision/ >> /var/log/user-data.log 2>&1',
+      'chmod +x /tmp/computer-vision/setup.sh >> /var/log/user-data.log 2>&1',
+      'echo "Application files extracted." >> /var/log/user-data.log'
+    );
+
+    // Run setup script
+    userData.addCommands(
+      'echo "Running setup script..." >> /var/log/user-data.log',
+      'sudo bash /tmp/computer-vision/setup.sh >> /var/log/user-data.log 2>&1',
+      'echo "Setup script completed." >> /var/log/user-data.log'
+    );
   }
 } 

@@ -19,7 +19,7 @@ const rtspKvsStack = new RtspKvsStack(app, 'RtspKvsStack', {
 
 // Create the ComputerVisionStack and pass the VPC from RtspKvsStack
 new ComputerVisionStack(app, 'ComputerVisionStack', {
-  vpc: rtspKvsStack.vpc,
+  vpc: undefined,
   env: {
     account: process.env.CDK_DEFAULT_ACCOUNT,
     region: process.env.CDK_DEFAULT_REGION
