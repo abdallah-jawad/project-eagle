@@ -68,6 +68,11 @@ export class ComputerVisionStack extends cdk.Stack {
       path: path.join(__dirname, '..', 'computer-vision/src'),
     });
 
+    // Create asset for requirements.txt
+    const requirementsFile = new Asset(this, 'ComputerVisionRequirements', {
+      path: path.join(__dirname, '..', 'computer-vision/requirements.txt'),
+    });
+
     // Create the EC2 instance
     const ec2Instance = new ec2.Instance(this, 'ComputerVisionInstance', {
       vpc,
@@ -78,10 +83,12 @@ export class ComputerVisionStack extends cdk.Stack {
       vpcSubnets: {
         subnetType: ec2.SubnetType.PUBLIC,
       },
+      instanceName: 'ComputerVisionInstanceV2',
     });
 
     // Grant the instance permission to read the application files
     appFiles.grantRead(role);
+    requirementsFile.grantRead(role);
 
     // Add user data script
     const userData = ec2Instance.userData;
@@ -94,12 +101,12 @@ export class ComputerVisionStack extends cdk.Stack {
       'echo "User data script started execution."'
     );
 
-    // Install required packages
+    // Install required system packages
     userData.addCommands(
-      'echo "Installing required packages..." >> /var/log/user-data.log',
+      'echo "Installing required system packages..." >> /var/log/user-data.log',
       'yum update -y >> /var/log/user-data.log 2>&1',
       'yum install -y python3 python3-pip unzip aws-cli >> /var/log/user-data.log 2>&1',
-      'echo "Required packages installed." >> /var/log/user-data.log'
+      'echo "Required system packages installed." >> /var/log/user-data.log'
     );
 
     // Download application files
@@ -109,6 +116,13 @@ export class ComputerVisionStack extends cdk.Stack {
       localFile: '/tmp/computer-vision.zip',
     });
     
+    // Download requirements.txt
+    userData.addS3DownloadCommand({
+      bucket: requirementsFile.bucket,
+      bucketKey: requirementsFile.s3ObjectKey,
+      localFile: '/tmp/requirements.txt',
+    });
+    
     // Extract application files
     userData.addCommands(
       'echo "Extracting application files..." >> /var/log/user-data.log',
@@ -116,6 +130,13 @@ export class ComputerVisionStack extends cdk.Stack {
       'unzip -o /tmp/computer-vision.zip -d /tmp/computer-vision/ >> /var/log/user-data.log 2>&1',
       'chmod +x /tmp/computer-vision/setup.sh >> /var/log/user-data.log 2>&1',
       'echo "Application files extracted." >> /var/log/user-data.log'
+    );
+
+    // Install Python packages from requirements.txt
+    userData.addCommands(
+      'echo "Installing Python packages from requirements.txt..." >> /var/log/user-data.log',
+      'pip3 install -r /tmp/requirements.txt >> /var/log/user-data.log 2>&1',
+      'echo "Python packages installed." >> /var/log/user-data.log'
     );
 
     // Run setup script
