@@ -1,9 +1,9 @@
 import boto3
-import logging
 from typing import Optional, Generator, Dict, Any
 from datetime import datetime
+from utils import setup_logging
 
-logger = logging.getLogger(__name__)
+logger = setup_logging()
 
 class KVSClient:
     """Client for interacting with Amazon Kinesis Video Streams."""
@@ -12,49 +12,6 @@ class KVSClient:
         """Initialize the KVS client."""
         self.kvs_client = boto3.client('kinesisvideo')
         self.kvs_archive = None
-        
-    def get_frame(self, stream_name: str, timestamp: Optional[datetime] = None) -> bytes:
-        """
-        Get a single frame from a Kinesis Video stream.
-        
-        Args:
-            stream_name: Name of the Kinesis Video stream
-            timestamp: Optional timestamp to get frame from specific time
-            
-        Returns:
-            Frame data as bytes
-            
-        Raises:
-            Exception: If frame cannot be retrieved
-        """
-        try:
-            # Get data endpoint for the stream
-            endpoint = self.kvs_client.get_data_endpoint(
-                StreamName=stream_name,
-                APIName='GET_MEDIA'
-            )['DataEndpoint']
-            
-            # Create archive client if not exists
-            if not self.kvs_archive:
-                self.kvs_archive = boto3.client(
-                    'kinesis-video-archived-media',
-                    endpoint_url=endpoint
-                )
-            
-            # Get the frame
-            response = self.kvs_archive.get_media(
-                StreamName=stream_name,
-                StartSelector={
-                    'StartSelectorType': 'NOW' if not timestamp else 'TIMESTAMP',
-                    **({"StartTimestamp": timestamp} if timestamp else {})
-                }
-            )
-            
-            return response['Payload'].read()
-            
-        except Exception as e:
-            logger.error(f"Failed to get frame from stream {stream_name}: {str(e)}")
-            raise
             
     def get_media_stream(self, stream_name: str, start_timestamp: Optional[datetime] = None) -> Generator[Dict[str, Any], None, None]:
         """

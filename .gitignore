@@ -43,3 +43,7 @@ coverage/
 .cache/
 .temp/
 .tmp/
+
+# Model files
+*.onnx
+computer-vision/model/*.onnx

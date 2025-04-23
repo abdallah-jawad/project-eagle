@@ -4,25 +4,98 @@ Main application module for the Computer Vision service.
 """
 
 import time
-import logging
-import sys
 import cv2
-import numpy as np
+import os
+from pathlib import Path
 from dependencies.kvs import KVSClient
+from dependencies.inference import InferenceEngine
+from utils import setup_logging
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
-)
+# Setup logging
+logger = setup_logging()
 
-logger = logging.getLogger(__name__)
+class App:
+    def __init__(self):
+        self.logger = logger
+        self.kvs_client = KVSClient()
+        self.inference_engine = InferenceEngine()
 
+    def run_sanity_test(self):
+        """
+        Run a sanity test on a single image using the inference engine.
+        Expects an image file in the test directory.
+        """
+        self.logger.info("Starting sanity test")
+        
+        # Get test image path
+        test_dir = Path("test")
+        if not test_dir.exists():
+            self.logger.error("Test directory not found")
+            return
+            
+        # Find first image file in test directory
+        image_files = list(test_dir.glob("*.jpeg")) + list(test_dir.glob("*.png"))
+        if not image_files:
+            self.logger.error("No image files found in test directory")
+            return
+            
+        test_image_path = image_files[0]
+        self.logger.info(f"Testing with image: {test_image_path}")
+        
+        try:
+            # Read image
+            image = cv2.imread(str(test_image_path))
+            if image is None:
+                self.logger.error(f"Failed to read image: {test_image_path}")
+                return
+                
+            # Get image dimensions
+            height, width = image.shape[:2]
+            
+            # Run inference
+            results = self.inference_engine.run_inference(image)
+            
+            # Print results
+            self.logger.info(f"Found {len(results)} detections:")
+            
+            # Create a copy of the image for visualization
+            vis_image = image.copy()
+            
+            # Draw each detection
+            for i, detection in enumerate(results, 1):
+                self.logger.info(f"Detection {i}:")
+                self.logger.info(f"  Class: {detection.class_name} (ID: {detection.class_id})")
+                self.logger.info(f"  Confidence: {detection.confidence:.2f}")
+                self.logger.info(f"  Bounding Box: {detection.bbox}")
+                
+                # Get bounding box coordinates and scale to image dimensions
+                x1, y1, x2, y2 = detection.bbox
+                x1, x2 = int(x1 * width), int(x2 * width)
+                y1, y2 = int(y1 * height), int(y2 * height)
+                
+                # Draw rectangle
+                cv2.rectangle(vis_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                
+                # Add label
+                label = f"{detection.class_name} ({detection.confidence:.2f})"
+                cv2.putText(vis_image, label, (x1, y1 - 10), 
+                          cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            
+            # Save the visualization
+            output_path = test_dir / "output.jpg"
+            cv2.imwrite(str(output_path), vis_image)
+            self.logger.info(f"Visualization saved to: {output_path}")
+            
+            # Display the image (optional)
+            cv2.imshow("Detections", vis_image)
+            cv2.waitKey(0)
+            cv2.destroyAllWindows()
+                
+        except Exception as e:
+            self.logger.error(f"Error during sanity test: {str(e)}")
+            raise
 
-def process_kvs_stream(stream_name: str):
+def process_stream(stream_name: str):
     """
     Process a Kinesis Video Stream by iterating through chunks and processing frames.
     
@@ -45,27 +118,10 @@ def process_kvs_stream(stream_name: str):
             timestamp = chunk['timestamp']
             stream_name = chunk['stream_name']
             
-            # Process the chunk data (this is a simplified example)
-            # In a real application, you would decode the video data and process frames
             logger.info(f"Received chunk from stream {stream_name} at {timestamp}")
             
-            # Example: If the data is H.264 encoded, you might decode it like this:
-            # Note: This is a simplified example and would need proper error handling
-            # and frame extraction logic in a production environment
             try:
-                # Convert bytes to numpy array (this is a simplified example)
-                # In a real application, you would use a proper video decoder
-                # nparr = np.frombuffer(data, np.uint8)
-                # frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-                
-                # Process the frame (example: display or save it)
-                # cv2.imshow('Frame', frame)
-                # cv2.waitKey(1)
-                
-                # Or save the frame
-                # cv2.imwrite(f'frame_{timestamp.timestamp()}.jpg', frame)
-                
-                # For now, just log the size of the chunk
+
                 logger.info(f"Chunk size: {len(data)} bytes")
                 
             except Exception as e:
@@ -88,11 +144,6 @@ def hello_world():
         logger.info("Hello World!")
         time.sleep(5)
 
-
 if __name__ == "__main__":
-    # Example usage of the KVS stream processing
-    # Replace 'your-stream-name' with your actual KVS stream name
-    # process_kvs_stream('your-stream-name')
-    
-    # Or run the hello world example
-    hello_world() 
+    app = App()
+    app.run_sanity_test()
