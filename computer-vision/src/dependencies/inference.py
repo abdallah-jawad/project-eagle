@@ -60,23 +60,45 @@ class InferenceEngine:
         Preprocess image for model input.
         
         Args:
-            image: Input image as numpy array (H,W,C)
+            image: Input image as numpy array (H,W,C) in BGR format
             
         Returns:
             Preprocessed image ready for inference
         """
-        # Resize image to model input size
-        input_height, input_width = self.input_shape[2:]
-        image = cv2.resize(image, (input_width, input_height))
+        # Convert BGR to RGB
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         
-        # Normalize pixel values to [0,1]
-        image = image.astype(np.float32) / 255.0
+        # Get dimensions from model input shape
+        input_height, input_width = 640, 640  # YOLOv8 default input size
         
-        # Add batch dimension and ensure NCHW format
-        image = np.transpose(image, (2, 0, 1))
-        image = np.expand_dims(image, 0)
+        # Calculate scaling factors
+        scale = min(input_height / image.shape[0], input_width / image.shape[1])
+        new_height = int(image.shape[0] * scale)
+        new_width = int(image.shape[1] * scale)
         
-        return image
+        # Resize image maintaining aspect ratio
+        resized = cv2.resize(image, (new_width, new_height))
+        
+        # Create black canvas of target size
+        canvas = np.zeros((input_height, input_width, 3), dtype=np.uint8)
+        
+        # Calculate offset to center the image
+        y_offset = (input_height - new_height) // 2
+        x_offset = (input_width - new_width) // 2
+        
+        # Place resized image on canvas
+        canvas[y_offset:y_offset + new_height, x_offset:x_offset + new_width] = resized
+        
+        # Normalize pixel values
+        preprocessed = canvas.astype(np.float32) / 255.0
+        
+        # Transpose from HWC to CHW format
+        preprocessed = preprocessed.transpose(2, 0, 1)
+        
+        # Add batch dimension
+        preprocessed = np.expand_dims(preprocessed, axis=0)
+        
+        return preprocessed
         
     def run_inference(self, image: np.ndarray) -> List[DetectionResult]:
         """
@@ -94,7 +116,7 @@ class InferenceEngine:
             
             # Run inference
             outputs = self.session.run(None, {self.input_name: processed_image})
-            
+
             # Post-process results
             detections = self.postprocess(outputs[0])
             
@@ -116,25 +138,60 @@ class InferenceEngine:
         """
         results = []
         
-        # YOLOv8 output format: [batch, num_detections, 6]
-        # Each detection is [x1, y1, x2, y2, confidence, class_id]
-        for detection in output[0]:  # Take first batch
-            if len(detection) >= 6:  # Ensure we have all required values
-                # Extract values and convert to Python scalars
-                x1, y1, x2, y2 = map(float, detection[:4])
-                confidence = float(detection[4])
-                class_id = int(detection[5])
-                
-                # Get class name
+        # YOLOv8 output format: [batch, num_classes+4, num_anchors]
+        # First 4 values are [cx, cy, w, h], rest are class probabilities
+        predictions = output[0]  # Take first batch
+        
+        num_classes = predictions.shape[0] - 4  # Subtract box coordinates
+        scores = predictions[4:]  # Class scores
+        boxes = predictions[:4]   # Box coordinates
+        
+        # Get class indices and scores
+        class_scores = np.max(scores, axis=0)  # Max score for each detection
+        class_ids = np.argmax(scores, axis=0)   # Class ID with max score
+        
+        # Filter by confidence threshold
+        mask = class_scores > 0.25
+        
+        if np.any(mask):
+            # Get filtered detections
+            filtered_boxes = boxes[:, mask]
+            filtered_scores = class_scores[mask]
+            filtered_class_ids = class_ids[mask]
+            
+            # Convert centerx, centery, width, height to x1,y1,x2,y2
+            x = filtered_boxes[0]  # center x
+            y = filtered_boxes[1]  # center y
+            w = filtered_boxes[2]  # width
+            h = filtered_boxes[3]  # height
+            
+            # Calculate corners
+            x1 = x - w/2  # top left x
+            y1 = y - h/2  # top left y
+            x2 = x + w/2  # bottom right x
+            y2 = y + h/2  # bottom right y
+            
+            # Create detection results
+            for i in range(len(filtered_scores)):
+                class_id = int(filtered_class_ids[i])
                 class_name = COCO_CLASSES[class_id] if class_id < len(COCO_CLASSES) else f"unknown_{class_id}"
                 
-                # Only add detections with confidence above threshold
-                if confidence > 0.25:  # You can adjust this threshold
-                    results.append(DetectionResult(
-                        class_id=class_id,
-                        class_name=class_name,
-                        confidence=confidence,
-                        bbox=(x1, y1, x2, y2)
-                    ))
-            
+                # Clip coordinates to 0-1 range
+                bbox = (
+                    float(max(0.0, min(1.0, x1[i]))),
+                    float(max(0.0, min(1.0, y1[i]))),
+                    float(max(0.0, min(1.0, x2[i]))),
+                    float(max(0.0, min(1.0, y2[i])))
+                )
+                
+                results.append(DetectionResult(
+                    class_id=class_id,
+                    class_name=class_name,
+                    confidence=float(filtered_scores[i]),
+                    bbox=bbox
+                ))
+                
+                logger.debug(f"Detection: {class_name} (conf: {filtered_scores[i]:.2f}) at bbox: {bbox}")
+        
+        logger.info(f"Found {len(results)} detections above confidence threshold")
         return results

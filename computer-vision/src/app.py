@@ -20,10 +20,12 @@ class App:
         self.kvs_client = KVSClient()
         self.inference_engine = InferenceEngine()
 
-    def run_sanity_test(self):
+    def run_sanity_test(self, image_name: str):
         """
         Run a sanity test on a single image using the inference engine.
-        Expects an image file in the test directory.
+        
+        Args:
+            image_name: Name of the PNG image file to process (e.g. 'test.png')
         """
         self.logger.info("Starting sanity test")
         
@@ -33,13 +35,12 @@ class App:
             self.logger.error("Test directory not found")
             return
             
-        # Find first image file in test directory
-        image_files = list(test_dir.glob("*.jpeg")) + list(test_dir.glob("*.png"))
-        if not image_files:
-            self.logger.error("No image files found in test directory")
+        # Construct image path
+        test_image_path = test_dir / image_name
+        if not test_image_path.exists():
+            self.logger.error(f"Image file not found: {test_image_path}")
             return
             
-        test_image_path = image_files[0]
         self.logger.info(f"Testing with image: {test_image_path}")
         
         try:
@@ -49,9 +50,10 @@ class App:
                 self.logger.error(f"Failed to read image: {test_image_path}")
                 return
                 
-            # Get image dimensions
-            height, width = image.shape[:2]
-            
+            # Get original dimensions
+            orig_height, orig_width = image.shape[:2]
+            self.logger.info(f"Original image dimensions: {orig_width}x{orig_height}")
+                
             # Run inference
             results = self.inference_engine.run_inference(image)
             
@@ -61,6 +63,9 @@ class App:
             # Create a copy of the image for visualization
             vis_image = image.copy()
             
+            # Colors for different classes
+            colors = [(0, 255, 0), (255, 0, 0), (0, 0, 255), (255, 255, 0), (0, 255, 255)]
+            
             # Draw each detection
             for i, detection in enumerate(results, 1):
                 self.logger.info(f"Detection {i}:")
@@ -68,25 +73,42 @@ class App:
                 self.logger.info(f"  Confidence: {detection.confidence:.2f}")
                 self.logger.info(f"  Bounding Box: {detection.bbox}")
                 
-                # Get bounding box coordinates and scale to image dimensions
+                # Get normalized bounding box coordinates
                 x1, y1, x2, y2 = detection.bbox
-                x1, x2 = int(x1 * width), int(x2 * width)
-                y1, y2 = int(y1 * height), int(y2 * height)
+                
+                # Convert normalized coordinates to pixel coordinates
+                x1 = int(x1 * orig_width)
+                y1 = int(y1 * orig_height)
+                x2 = int(x2 * orig_width)
+                y2 = int(y2 * orig_height)
+                
+                # Get color for this class
+                color = colors[detection.class_id % len(colors)]
                 
                 # Draw rectangle
-                cv2.rectangle(vis_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                cv2.rectangle(vis_image, (x1, y1), (x2, y2), color, 2)
                 
-                # Add label
+                # Add label with class name and confidence
                 label = f"{detection.class_name} ({detection.confidence:.2f})"
-                cv2.putText(vis_image, label, (x1, y1 - 10), 
-                          cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                label_size, baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)
+                y1_label = max(y1, label_size[1])
+                
+                # Draw label background
+                cv2.rectangle(vis_image, 
+                            (x1, y1_label - label_size[1] - baseline),
+                            (x1 + label_size[0], y1_label + baseline),
+                            color, cv2.FILLED)
+                            
+                # Draw label text
+                cv2.putText(vis_image, label, (x1, y1_label),
+                          cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
             
             # Save the visualization
-            output_path = test_dir / "output.jpg"
+            output_path = test_dir / f"output_{image_name}"
             cv2.imwrite(str(output_path), vis_image)
             self.logger.info(f"Visualization saved to: {output_path}")
             
-            # Display the image (optional)
+            # Display the image
             cv2.imshow("Detections", vis_image)
             cv2.waitKey(0)
             cv2.destroyAllWindows()
@@ -121,7 +143,6 @@ def process_stream(stream_name: str):
             logger.info(f"Received chunk from stream {stream_name} at {timestamp}")
             
             try:
-
                 logger.info(f"Chunk size: {len(data)} bytes")
                 
             except Exception as e:
@@ -130,7 +151,6 @@ def process_stream(stream_name: str):
     except Exception as e:
         logger.error(f"Error processing KVS stream {stream_name}: {str(e)}")
         raise
-
 
 def hello_world():
     """
@@ -146,4 +166,5 @@ def hello_world():
 
 if __name__ == "__main__":
     app = App()
-    app.run_sanity_test()
+    # Example usage with a specific image name
+    app.run_sanity_test("image3.png")
