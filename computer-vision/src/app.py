@@ -73,14 +73,11 @@ class App:
                 self.logger.info(f"  Confidence: {detection.confidence:.2f}")
                 self.logger.info(f"  Bounding Box: {detection.bbox}")
                 
-                # Get normalized bounding box coordinates
+                # Get bounding box coordinates (pixel values)
                 x1, y1, x2, y2 = detection.bbox
                 
-                # Convert normalized coordinates to pixel coordinates
-                x1 = int(x1 * orig_width)
-                y1 = int(y1 * orig_height)
-                x2 = int(x2 * orig_width)
-                y2 = int(y2 * orig_height)
+                # Convert to integers
+                x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
                 
                 # Get color for this class
                 color = colors[detection.class_id % len(colors)]
