@@ -33,27 +33,48 @@ class DetectionResult:
 class InferenceEngine:
     """Handles ML model inference for object detection"""
     
-    def __init__(self, model_path: str = "../model/yolov8x.onnx"):
+    def __init__(self, model_path: str = "../model/yolov8x.onnx", use_gpu: bool = True):
         """
         Initialize the inference engine.
         
         Args:
             model_path: Path to the ONNX model file
+            use_gpu: Whether to use GPU for inference. If False, will use CPU.
+                   If True but GPU is not available, will fall back to CPU.
         """
         self.model_path = Path(model_path)
         if not self.model_path.exists():
             raise FileNotFoundError(f"Model file not found at {model_path}")
             
+        # Get available providers
+        available_providers = onnxruntime.get_available_providers()
+        logger.info(f"Available providers: {available_providers}")
+        
+        # Set up providers based on use_gpu parameter
+        if use_gpu and 'CUDAExecutionProvider' in available_providers:
+            providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+            logger.info("Using CUDA for GPU acceleration")
+            self.device = "GPU"
+        else:
+            if use_gpu:
+                logger.warning("GPU requested but CUDA not available, falling back to CPU")
+            providers = ['CPUExecutionProvider']
+            self.device = "CPU"
+            
         # Initialize ONNX Runtime session
         self.session = onnxruntime.InferenceSession(
             str(self.model_path),
-            providers=['CPUExecutionProvider']
+            providers=providers
         )
         
         # Get model metadata
         self.input_name = self.session.get_inputs()[0].name
         self.input_shape = self.session.get_inputs()[0].shape
         logger.info(f"Model loaded successfully from {model_path}")
+        
+        # Log which provider is being used
+        logger.info(f"Using provider: {self.session.get_providers()[0]}")
+        logger.info(f"Inference device: {self.device}")
         
     def preprocess(self, image: np.ndarray) -> Tuple[np.ndarray, int, int, float, int, int]:
         """
@@ -129,30 +150,16 @@ class InferenceEngine:
         """
         results = []
         
-        # Debug: Print output shape and sample values
-        logger.info(f"Model output shape: {output.shape}")
-        logger.info(f"Model output sample: {output[0, :5, :5]}")
-        
         # YOLOv8 output format: [batch, num_classes+4, num_anchors]
         # First 4 values are [cx, cy, w, h], rest are class probabilities
         predictions = output[0]  # Take first batch
         
-        # Debug: Print predictions shape
-        logger.info(f"Predictions shape before transpose: {predictions.shape}")
-        
         # Reshape predictions to [num_anchors, num_classes+4]
         predictions = predictions.T
-        
-        # Debug: Print predictions shape after transpose
-        logger.info(f"Predictions shape after transpose: {predictions.shape}")
         
         # Extract boxes and scores
         boxes = predictions[:, :4]  # [num_anchors, 4] - (cx, cy, w, h)
         scores = predictions[:, 4:]  # [num_anchors, num_classes]
-        
-        # Debug: Print sample boxes and scores
-        logger.info(f"Sample boxes: {boxes[:5]}")
-        logger.info(f"Sample scores: {scores[:5, :5]}")
         
         # Get class indices and scores
         class_scores = np.max(scores, axis=1)  # Max score for each detection
@@ -167,26 +174,17 @@ class InferenceEngine:
             filtered_scores = class_scores[mask]
             filtered_class_ids = class_ids[mask]
             
-            # Debug: Print filtered boxes
-            logger.info(f"Filtered boxes: {filtered_boxes[:5]}")
-            
             # Convert centerx, centery, width, height to x1,y1,x2,y2
             x = filtered_boxes[:, 0]  # center x
             y = filtered_boxes[:, 1]  # center y
             w = filtered_boxes[:, 2]  # width
             h = filtered_boxes[:, 3]  # height
             
-            # Debug: Print box components
-            logger.info(f"Box components - x: {x[:5]}, y: {y[:5]}, w: {w[:5]}, h: {h[:5]}")
-            
             # Calculate corners
             x1 = x - w/2  # top left x
             y1 = y - h/2  # top left y
             x2 = x + w/2  # bottom right x
             y2 = y + h/2  # bottom right y
-            
-            # Debug: Print corner coordinates
-            logger.info(f"Corner coordinates - x1: {x1[:5]}, y1: {y1[:5]}, x2: {x2[:5]}, y2: {y2[:5]}")
             
             # Remove padding and scale back to original image size
             x1 = (x1 - x_offset) / scale
@@ -199,9 +197,6 @@ class InferenceEngine:
             y1 = np.clip(y1, 0, original_height)
             x2 = np.clip(x2, 0, original_width)
             y2 = np.clip(y2, 0, original_height)
-            
-            # Debug: Print scaled coordinates
-            logger.info(f"Scaled coordinates - x1: {x1[:5]}, y1: {y1[:5]}, x2: {x2[:5]}, y2: {y2[:5]}")
             
             # Create detection results
             for i in range(len(filtered_scores)):
@@ -222,8 +217,5 @@ class InferenceEngine:
                     confidence=float(filtered_scores[i]),
                     bbox=bbox
                 ))
-                
-                logger.debug(f"Detection: {class_name} (conf: {filtered_scores[i]:.2f}) at bbox: {bbox}")
         
-        logger.info(f"Found {len(results)} detections above confidence threshold")
         return results
