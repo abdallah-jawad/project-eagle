@@ -5,11 +5,11 @@ Main application module for the Computer Vision service.
 
 import time
 import cv2
-import os
 from pathlib import Path
 from dependencies.kvs import KVSClient
 from dependencies.inference import InferenceEngine
 from dependencies.image import draw_detections
+from dependencies.setup_cuda import setup_cuda_environment
 from utils import setup_logging
 
 # Setup logging
@@ -18,6 +18,11 @@ logger = setup_logging()
 class App:
     def __init__(self):
         self.logger = logger
+        
+        # Set up CUDA environment before initializing inference engine
+        if not setup_cuda_environment():
+            self.logger.warning("Failed to set up CUDA environment, falling back to CPU")
+            
         self.kvs_client = KVSClient()
         self.inference_engine = InferenceEngine(use_gpu=True)
 
@@ -83,7 +88,7 @@ class App:
             self.logger.error(f"Error during sanity test: {str(e)}")
             raise
 
-    def run_test_video(self, video_name: str, output_name: str = None, show_live: bool = True, frame_interval: int = 1):
+    def run_test_video(self, video_name: str, output_name: str = None, show_live: bool = True, target_fps: int = 10):
         """
         Run object detection on a video file and optionally display/save the results.
         
@@ -91,7 +96,7 @@ class App:
             video_name: Name of the video file to process (e.g. 'video-test-1.mp4')
             output_name: Optional name for the output video file. If None, will use 'output_{video_name}'
             show_live: Whether to display the video with detections in real-time
-            frame_interval: Process every N-th frame (e.g. 1 = every frame, 2 = every other frame, etc.)
+            target_fps: Target frames per second for processing (default: 10)
         """
         self.logger.info("Starting video test")
         
@@ -108,8 +113,7 @@ class App:
             return
             
         self.logger.info(f"Processing video: {video_path}")
-        if frame_interval > 1:
-            self.logger.info(f"Processing every {frame_interval}-th frame")
+        self.logger.info(f"Target processing rate: {target_fps} FPS")
         
         try:
             # Open video file
@@ -121,28 +125,28 @@ class App:
             # Get video properties
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            fps = cap.get(cv2.CAP_PROP_FPS)
+            input_fps = cap.get(cv2.CAP_PROP_FPS)
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             
-            # Adjust FPS for frame interval
-            adjusted_fps = fps / frame_interval
-            
-            self.logger.info(f"Video properties: {width}x{height} @ {fps} FPS, {total_frames} frames")
-            self.logger.info(f"Adjusted output FPS: {adjusted_fps:.2f}")
+            self.logger.info(f"Video properties: {width}x{height} @ {input_fps} FPS, {total_frames} frames")
             
             # Set up video writer if output is requested
             writer = None
             if output_name:
                 output_path = test_dir / output_name
                 fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-                writer = cv2.VideoWriter(str(output_path), fourcc, adjusted_fps, (width, height))
+                writer = cv2.VideoWriter(str(output_path), fourcc, target_fps, (width, height))
                 self.logger.info(f"Will save output to: {output_path}")
             
-            # Process each frame
-            frame_count = 0
-            processed_frames = 0
+            # Initialize timing variables
+            frame_interval = max(1, int(input_fps / target_fps))  # Calculate frame interval to achieve target FPS
+            frame_time = 1.0 / target_fps  # Target time per frame in seconds
+            last_frame_time = time.time()
             last_log_time = time.time()
             log_interval = 1.0  # Log every 1 second
+            processed_frames = 0
+            frame_count = 0
+            total_processing_time = 0
             
             while cap.isOpened():
                 ret, frame = cap.read()
@@ -151,20 +155,23 @@ class App:
                     
                 frame_count += 1
                 
-                # Skip frames based on interval
+                # Skip frames to maintain target FPS
                 if frame_count % frame_interval != 0:
                     continue
-                    
-                processed_frames += 1
+                
+                # Calculate time since last frame
                 current_time = time.time()
+                elapsed = current_time - last_frame_time
                 
-                # Log progress every second
-                if current_time - last_log_time >= log_interval:
-                    self.logger.info(f"Processing frame {processed_frames}/{total_frames//frame_interval} ({processed_frames/(total_frames//frame_interval)*100:.1f}%)")
-                    last_log_time = current_time
+                # If we're ahead of schedule, wait
+                if elapsed < frame_time:
+                    time.sleep(frame_time - elapsed)
                 
-                # Run inference
+                # Process frame
+                start_time = time.time()
                 results = self.inference_engine.run_inference(frame)
+                processing_time = time.time() - start_time
+                total_processing_time += processing_time
                 
                 # Draw detections
                 vis_frame = draw_detections(frame, results)
@@ -178,6 +185,23 @@ class App:
                     cv2.imshow("Video Detection", vis_frame)
                     if cv2.waitKey(1) & 0xFF == ord('q'):
                         break
+                
+                processed_frames += 1
+                last_frame_time = time.time()
+                
+                # Log progress and performance metrics every second
+                if current_time - last_log_time >= log_interval:
+                    avg_processing_time = total_processing_time / processed_frames
+                    actual_fps = processed_frames / (current_time - last_log_time)
+                    self.logger.info(
+                        f"Frame {processed_frames}/{total_frames//frame_interval} "
+                        f"({processed_frames/(total_frames//frame_interval)*100:.1f}%) - "
+                        f"Processing: {avg_processing_time*1000:.1f}ms/frame - "
+                        f"Actual FPS: {actual_fps:.1f}"
+                    )
+                    last_log_time = current_time
+                    total_processing_time = 0
+                    processed_frames = 0
             
             # Clean up
             cap.release()
@@ -186,7 +210,7 @@ class App:
             if show_live:
                 cv2.destroyAllWindows()
                 
-            self.logger.info(f"Video processing completed. Processed {processed_frames} frames out of {total_frames} total frames.")
+            self.logger.info(f"Video processing completed. Processed {frame_count//frame_interval} frames out of {total_frames} total frames.")
                 
         except Exception as e:
             self.logger.error(f"Error during video test: {str(e)}")
@@ -207,4 +231,4 @@ def hello_world():
 if __name__ == "__main__":
     app = App()
     # app.run_test_single_image("image3.png")
-    app.run_test_video("video-test-1.mp4", output_name="output_video.mp4", show_live=False, frame_interval=3)
+    app.run_test_video("video-test-1.mp4", output_name="output_video.mp4", show_live=True, target_fps=10)

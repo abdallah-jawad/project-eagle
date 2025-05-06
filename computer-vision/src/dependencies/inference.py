@@ -1,34 +1,13 @@
 import numpy as np
 import onnxruntime
 import cv2
-from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Tuple
 from utils import setup_logging
+from models.detection_result import DetectionResult
+from constants.coco_classes import COCO_CLASSES
 
 logger = setup_logging()
-
-# COCO dataset class names
-COCO_CLASSES = [
-    'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat',
-    'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat',
-    'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack',
-    'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball',
-    'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket',
-    'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple',
-    'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair',
-    'couch', 'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse', 'remote',
-    'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'book',
-    'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush'
-]
-
-@dataclass
-class DetectionResult:
-    """Data model for object detection results"""
-    class_id: int
-    class_name: str
-    confidence: float
-    bbox: Tuple[float, float, float, float]  # (x1, y1, x2, y2)
 
 class InferenceEngine:
     """Handles ML model inference for object detection"""
@@ -46,35 +25,43 @@ class InferenceEngine:
         if not self.model_path.exists():
             raise FileNotFoundError(f"Model file not found at {model_path}")
             
-        # Get available providers
-        available_providers = onnxruntime.get_available_providers()
-        logger.info(f"Available providers: {available_providers}")
-        
         # Set up providers based on use_gpu parameter
-        if use_gpu and 'CUDAExecutionProvider' in available_providers:
+        if use_gpu:
             providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
-            logger.info("Using CUDA for GPU acceleration")
+            logger.info("Attempting to use CUDA for GPU acceleration")
             self.device = "GPU"
         else:
-            if use_gpu:
-                logger.warning("GPU requested but CUDA not available, falling back to CPU")
             providers = ['CPUExecutionProvider']
             self.device = "CPU"
             
-        # Initialize ONNX Runtime session
-        self.session = onnxruntime.InferenceSession(
-            str(self.model_path),
-            providers=providers
-        )
+        try:
+            # Initialize ONNX Runtime session
+            self.session = onnxruntime.InferenceSession(
+                str(self.model_path),
+                providers=providers
+            )
+            
+            # Log which provider is being used
+            actual_provider = self.session.get_providers()[0]
+            logger.info(f"Using provider: {actual_provider}")
+            logger.info(f"Inference device: {'GPU' if 'CUDA' in actual_provider else 'CPU'}")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize inference session: {str(e)}")
+            if use_gpu:
+                logger.warning("GPU initialization failed, falling back to CPU")
+                self.session = onnxruntime.InferenceSession(
+                    str(self.model_path),
+                    providers=['CPUExecutionProvider']
+                )
+                self.device = "CPU"
+            else:
+                raise
         
         # Get model metadata
         self.input_name = self.session.get_inputs()[0].name
         self.input_shape = self.session.get_inputs()[0].shape
         logger.info(f"Model loaded successfully from {model_path}")
-        
-        # Log which provider is being used
-        logger.info(f"Using provider: {self.session.get_providers()[0]}")
-        logger.info(f"Inference device: {self.device}")
         
     def preprocess(self, image: np.ndarray) -> Tuple[np.ndarray, int, int, float, int, int]:
         """
