@@ -1,31 +1,25 @@
 import boto3
-from typing import Optional, Generator, Dict, Any
-from datetime import datetime
+import cv2
+from typing import Optional
 from utils import setup_logging
 
 logger = setup_logging()
 
 class KVSClient:
-    """Client for interacting with Amazon Kinesis Video Streams."""
+    """Client for interacting with Kinesis Video Streams and creating OpenCV capture objects"""
     
     def __init__(self):
-        """Initialize the KVS client."""
         self.kvs_client = boto3.client('kinesisvideo')
-        self.kvs_archive = None
-            
-    def get_media_stream(self, stream_name: str, start_timestamp: Optional[datetime] = None) -> Generator[Dict[str, Any], None, None]:
-        """
-        Get a media stream from a Kinesis Video stream that can be iterated through.
+        self.logger = logger
+
+    def get_stream_url(self, stream_name: str) -> Optional[str]:
+        """Get the endpoint URL for a KVS stream
         
         Args:
-            stream_name: Name of the Kinesis Video stream
-            start_timestamp: Optional timestamp to start streaming from
+            stream_name: Name/ID of the KVS stream
             
         Returns:
-            Generator that yields chunks of media data with metadata
-            
-        Raises:
-            Exception: If media stream cannot be retrieved
+            Optional[str]: URL endpoint for the stream if successful, None if failed
         """
         try:
             # Get data endpoint for the stream
@@ -34,36 +28,34 @@ class KVSClient:
                 APIName='GET_MEDIA'
             )['DataEndpoint']
             
-            # Create archive client if not exists
-            if not self.kvs_archive:
-                self.kvs_archive = boto3.client(
-                    'kinesis-video-archived-media',
-                    endpoint_url=endpoint
-                )
-            
-            # Get the media stream
-            response = self.kvs_archive.get_media(
-                StreamName=stream_name,
-                StartSelector={
-                    'StartSelectorType': 'NOW' if not start_timestamp else 'TIMESTAMP',
-                    **({"StartTimestamp": start_timestamp} if start_timestamp else {})
-                }
-            )
-            
-            # Get the payload stream
-            payload = response['Payload']
-            
-            # Process the stream in chunks
-            for chunk in payload:
-                # Each chunk contains a fragment of the media stream
-                # You can process each chunk as needed
-                yield {
-                    'data': chunk,
-                    'timestamp': datetime.now(),  # You might want to extract actual timestamp from the chunk
-                    'stream_name': stream_name
-                }
-                
+            return endpoint
         except Exception as e:
-            logger.error(f"Failed to get media stream from {stream_name}: {str(e)}")
-            raise
+            self.logger.error(f"Failed to get KVS endpoint for stream {stream_name}: {str(e)}")
+            return None
 
+    def create_capture(self, camera_id: str, stream_name: str) -> Optional[cv2.VideoCapture]:
+        """Create an OpenCV VideoCapture object from a KVS stream
+        
+        Args:
+            camera_id: ID of the camera
+            stream_name: Name/ID of the KVS stream
+            
+        Returns:
+            Optional[cv2.VideoCapture]: VideoCapture object if successful, None if failed
+        """
+        try:
+            stream_url = self.get_stream_url(stream_name)
+            if not stream_url:
+                return None
+                
+            # Create OpenCV capture object
+            capture = cv2.VideoCapture(stream_url)
+            if not capture.isOpened():
+                self.logger.error(f"Failed to open video capture for camera {camera_id}")
+                return None
+                
+            return capture
+            
+        except Exception as e:
+            self.logger.error(f"Failed to create capture for camera {camera_id}: {str(e)}")
+            return None
