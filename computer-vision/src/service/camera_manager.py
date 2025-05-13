@@ -1,3 +1,12 @@
+import threading
+import asyncio
+from typing import List
+from ..dependencies.websocket import WebSocketServer
+from ..models.camera import Camera
+from ..services.inference_engine import InferenceEngine
+from ..utils.logging import setup_logging
+from ..utils.visualization import draw_detections
+
 logger = setup_logging()
 
 class CameraManager:
@@ -12,10 +21,15 @@ class CameraManager:
         self.inference_engine = InferenceEngine()
         self.running = False
         self.camera_threads = {}
+        self.websocket_server = WebSocketServer()
         
-    def start(self):
-        """Start processing all enabled cameras"""
+    async def start(self):
+        """Start processing all enabled cameras and WebSocket server"""
         self.running = True
+        
+        # Start WebSocket server in a separate task
+        websocket_task = asyncio.create_task(self.websocket_server.start())
+        
         for camera in self.cameras:
             if camera.enabled and camera.capture is not None:
                 # Start thread for each camera
@@ -54,7 +68,11 @@ class CameraManager:
             # Draw detection results on frame
             annotated_frame = draw_detections(frame, detections)
             
-            # TODO: Publish annotated frame to websocket
+            # Publish annotated frame to websocket
+            asyncio.run(self.websocket_server.broadcast_frame(
+                camera.camera_id, 
+                annotated_frame
+            ))
             
             # TODO: Store detections in DB via DB client
             # db_client.store_detections(camera.camera_id, detections)
