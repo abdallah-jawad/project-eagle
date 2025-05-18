@@ -2,6 +2,8 @@ import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as appconfig from 'aws-cdk-lib/aws-appconfig';
 import { deploymentConfig } from '../config/deployment-config';
 import { InstanceTypeUtils } from './utils/instance-type-utils';
 import * as path from 'path';
@@ -56,6 +58,71 @@ export class ComputerVisionStack extends cdk.Stack {
         'ec2-instance-connect:SendSSHPublicKey'
       ],
       resources: ['*']
+    }));
+
+    // Create DynamoDB table for detections
+    const detectionsTable = new dynamodb.Table(this, 'DetectionsTable', {
+      tableName: 'detections',
+      partitionKey: { name: 'timestamp', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'frame_id', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      pointInTimeRecovery: true,
+    });
+
+    // Add GSI for querying by detection class and timestamp
+    detectionsTable.addGlobalSecondaryIndex({
+      indexName: 'DetectionClassTimestampIndex',
+      partitionKey: { name: 'detection_class', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'timestamp', type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // Create AppConfig application
+    const appConfigApp = new appconfig.CfnApplication(this, 'ComputerVisionApp', {
+      name: 'computer-vision',
+      description: 'Computer Vision application configuration'
+    });
+
+    // Create AppConfig environment
+    const appConfigEnv = new appconfig.CfnEnvironment(this, 'ComputerVisionEnv', {
+      applicationId: appConfigApp.ref,
+      name: 'production',
+      description: 'Production environment for Computer Vision application'
+    });
+
+    // Create AppConfig configuration profile
+    const appConfigProfile = new appconfig.CfnConfigurationProfile(this, 'CameraConfigProfile', {
+      applicationId: appConfigApp.ref,
+      name: 'camera-config',
+      description: 'Camera configuration profile',
+      locationUri: 'hosted',
+      retrievalRoleArn: role.roleArn
+    });
+
+    // Add AppConfig permissions to the EC2 role
+    role.addToPolicy(new iam.PolicyStatement({
+      actions: [
+        'appconfig:GetConfiguration',
+        'appconfig:StartConfigurationSession'
+      ],
+      resources: [
+        `arn:aws:appconfig:${this.region}:${this.account}:application/${appConfigApp.ref}/environment/${appConfigEnv.ref}/configuration/${appConfigProfile.ref}`
+      ]
+    }));
+
+    // Add DynamoDB permissions to the EC2 role
+    role.addToPolicy(new iam.PolicyStatement({
+      actions: [
+        'dynamodb:PutItem',
+        'dynamodb:GetItem',
+        'dynamodb:Query',
+        'dynamodb:Scan',
+        'dynamodb:UpdateItem',
+        'dynamodb:DeleteItem',
+        'dynamodb:BatchWriteItem'
+      ],
+      resources: [detectionsTable.tableArn]
     }));
 
     // Get the recommended instance type based on the number of cameras

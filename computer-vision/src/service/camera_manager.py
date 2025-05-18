@@ -19,6 +19,7 @@ class CameraManager:
         self.logger = logger
         self.cameras = cameras
         self.inference_engine = InferenceEngine()
+        self.db_client = DynamoDBClient()
         self.running = False
         self.camera_threads = {}
         self.websocket_server = WebSocketServer()
@@ -74,8 +75,16 @@ class CameraManager:
                 annotated_frame
             ))
             
-            # TODO: Store detections in DB via DB client
-            # db_client.store_detections(camera.camera_id, detections)
+            # Store detections in DB
+            record = DetectionDBRecord(
+                timestamp=datetime.now(),
+                camera_id=camera.camera_id,
+                client_id=camera.client_id, 
+                zone=camera.zone,
+                detections=detections,
+                frame_id=str(uuid.uuid4())
+            )
+            self.db_client.store_detection(record)
 
         
     

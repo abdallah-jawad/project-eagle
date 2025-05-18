@@ -37,17 +37,22 @@ class DynamoDBClient:
         Args:
             record: DetectionDBRecord to store in DynamoDB
         """
-        # Convert to dict format for DynamoDB
-        item = {
-            'timestamp': record.timestamp.isoformat(),
-            'camera_id': record.camera_id,
-            'client_id': record.client_id,
-            'zone': record.zone,
-            'frame_id': record.frame_id,
-            'detections': [detection.__dict__ for detection in record.detections]
-        }
-        
-        self.write_queue.put(item)
+        # For each detection in the record, create a separate item
+        for detection in record.detections:
+            # Convert to dict format for DynamoDB
+            item = {
+                'timestamp': record.timestamp.isoformat(),
+                'frame_id': record.frame_id,
+                'camera_id': record.camera_id,
+                'client_id': record.client_id,
+                'zone': record.zone,
+                'detection_class': detection.class_name,
+                'confidence': detection.confidence,
+                'bbox': detection.bbox,
+                'class_id': detection.class_id
+            }
+            
+            self.write_queue.put(item)
 
     def _batch_processor(self):
         """Background thread that processes queued records in batches"""

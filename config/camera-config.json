@@ -1,0 +1,46 @@
+{
+  "cameras": [
+    {
+      "camera_id": "cam1",
+      "client_id": "customer1",
+      "enabled": true,
+      "zone": "entrance",
+      "notification_settings": {
+        "labels_to_notify_on": ["person", "car"],
+        "contact_email": "security@example.com",
+        "contact_phone": "+1234567890",
+        "notify_start_time": "08:00",
+        "notify_end_time": "18:00",
+        "enabled": true
+      },
+      "fps": 30,
+      "resolution": {
+        "width": 1920,
+        "height": 1080
+      },
+      "kvs_stream_id": "test-camera-1",
+      "labels": ["person", "car", "truck", "bicycle"]
+    },
+    {
+      "camera_id": "cam2",
+      "client_id": "customer1",
+      "enabled": true,
+      "zone": "parking",
+      "notification_settings": {
+        "labels_to_notify_on": ["car", "truck"],
+        "contact_email": "parking@example.com",
+        "contact_phone": "+1234567891",
+        "notify_start_time": "00:00",
+        "notify_end_time": "23:59",
+        "enabled": true
+      },
+      "fps": 30,
+      "resolution": {
+        "width": 1920,
+        "height": 1080
+      },
+      "kvs_stream_id": "test-camera-2",
+      "labels": ["car", "truck", "person"]
+    }
+  ]
+} 
