@@ -22,9 +22,6 @@ class WebSocketServer:
         self.port = port
         self.clients: Set[websockets.WebSocketServerProtocol] = set()
         self.camera_streams: Dict[str, asyncio.Queue] = {}
-        self.frame_quality = 70  # JPEG quality (0-100)
-        self.max_fps = 30  # Maximum FPS per camera
-        self.last_frame_time: Dict[str, float] = {}
         
     async def start(self):
         """Start the WebSocket server"""
@@ -57,13 +54,6 @@ class WebSocketServer:
                         "type": "subscribed",
                         "camera_id": camera_id
                     }))
-                elif data.get("type") == "set_quality":
-                    quality = data.get("quality", 70)
-                    self.frame_quality = max(0, min(100, quality))
-                    await websocket.send(json.dumps({
-                        "type": "quality_updated",
-                        "quality": self.frame_quality
-                    }))
         except websockets.exceptions.ConnectionClosed:
             pass
         finally:
@@ -78,23 +68,8 @@ class WebSocketServer:
         """
         current_time = datetime.now().timestamp()
         
-        # Rate limiting
-        if camera_id in self.last_frame_time:
-            time_diff = current_time - self.last_frame_time[camera_id]
-            if time_diff < (1.0 / self.max_fps):
-                return
-                
-        self.last_frame_time[camera_id] = current_time
-        
-        # Resize frame if too large (e.g., if original is 1080p)
-        height, width = frame.shape[:2]
-        if width > 1280:  # Resize if wider than 720p
-            scale = 1280 / width
-            frame = cv2.resize(frame, (int(width * scale), int(height * scale)))
-            
-        # Convert frame to JPEG with specified quality
-        encode_params = [int(cv2.IMWRITE_JPEG_QUALITY), self.frame_quality]
-        _, buffer = cv2.imencode('.jpg', frame, encode_params)
+        # Convert frame to JPEG
+        _, buffer = cv2.imencode('.jpg', frame)
         frame_bytes = base64.b64encode(buffer).decode('utf-8')
         
         # Create message

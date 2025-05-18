@@ -39,9 +39,8 @@ class App:
 
         # 3. Call manager.py to start and manage cameras
         self.manager = CameraManager(cameras)
+        self.manager.start()
 
 
 if __name__ == "__main__":
     app = App()
-    # app.run_test_single_image("image3.png")
-    app.run_test_video("video-test-1.mp4", output_name="output_video.mp4", show_live=True)
