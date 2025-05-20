@@ -12,7 +12,11 @@
     "deploy": "cdk deploy",
     "destroy": "cdk destroy",
     "lint": "eslint . --ext .ts",
-    "cdk-build": "npm run build && npm run lint && cdk synth"
+    "cdk-build": "npm run build && npm run lint && cdk synth",
+    "build:cdk": "tsc && eslint . --ext .ts && cdk synth",
+    "deploy:cdk": "npm run build:cdk && cdk deploy",
+    "build:frontend": "cd frontend && npm run build",
+    "deploy:frontend": "cd frontend && npm run build && npm run deploy"
   },
   "engines": {
     "node": "20.19.0",

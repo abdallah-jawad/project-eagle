@@ -1,16 +1,21 @@
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as cdk from 'aws-cdk-lib';
 import * as iam from 'aws-cdk-lib/aws-iam';
-import * as kinesisvideo from 'aws-cdk-lib/aws-kinesisvideo';
+import * as appconfig from 'aws-cdk-lib/aws-appconfig';
 import * as path from 'path';
 import { Asset } from 'aws-cdk-lib/aws-s3-assets';
 import { Construct } from 'constructs';
-import { customerConfigs } from '../config/customer-configs';
 import { InstanceTypeUtils } from './utils/instance-type-utils';
+import { CameraConfig } from './interfaces/camera-config';
 
 export interface RtspKvsStackProps extends cdk.StackProps {
   myIpAddress: string;
   keyPairName: string;
+  cameraConfigs: CameraConfig & {
+    appConfigApp: appconfig.CfnApplication;
+    appConfigEnv: appconfig.CfnEnvironment;
+    appConfigProfile: appconfig.CfnConfigurationProfile;
+  };
 }
 
 export class RtspKvsStack extends cdk.Stack {
@@ -19,7 +24,7 @@ export class RtspKvsStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: RtspKvsStackProps) {
     super(scope, id, props);
 
-    // Create a single VPC for all customers
+    // Create a single VPC for all cameras
     this.vpc = new ec2.Vpc(this, 'VPC', {
       vpcName: 'KVS Cloud Gateway VPC',
       natGateways: 0,
@@ -67,33 +72,14 @@ export class RtspKvsStack extends cdk.Stack {
       resources: ['*']
     }));
 
-    // Create KVS streams for all cameras across all customers
-    const streams: { [key: string]: kinesisvideo.CfnStream } = {};
-    customerConfigs.forEach(customer => {
-      customer.cameras.forEach(camera => {
-        streams[camera.streamName] = new kinesisvideo.CfnStream(this, `KvsStream-${camera.streamName}`, {
-          name: camera.streamName,
-          dataRetentionInHours: 24,
-          mediaType: 'video/h264',
-        });
-      });
-    });
-
-    // Add KVS permissions to the role
+    // Add broad KVS permissions to the role
     role.addToPolicy(new iam.PolicyStatement({
-      resources: Object.values(streams).map(stream => stream.attrArn),
+      resources: ['*'],
       actions: [
         'kinesisvideo:PutMedia',
         'kinesisvideo:DescribeStream',
         'kinesisvideo:GetDataEndpoint',
-        'kinesisvideo:TagStream'
-      ]
-    }));
-
-    // Add additional KVS permissions that might be needed
-    role.addToPolicy(new iam.PolicyStatement({
-      resources: ['*'],
-      actions: [
+        'kinesisvideo:TagStream',
         'kinesisvideo:CreateStream',
         'kinesisvideo:DeleteStream',
         'kinesisvideo:ListStreams',
@@ -101,8 +87,20 @@ export class RtspKvsStack extends cdk.Stack {
       ]
     }));
 
-    // Calculate total number of cameras across all customers
-    const totalCameras = InstanceTypeUtils.calculateTotalCameras();
+    // Add AppConfig permissions to the role
+    role.addToPolicy(new iam.PolicyStatement({
+      actions: [
+        'appconfig:GetConfiguration',
+        'appconfig:StartConfigurationSession',
+        'appconfig:GetLatestConfiguration'
+      ],
+      resources: [
+        `arn:aws:appconfig:${this.region}:${this.account}:application/${props.cameraConfigs.appConfigApp.ref}/environment/${props.cameraConfigs.appConfigEnv.ref}/configuration/${props.cameraConfigs.appConfigProfile.ref}`
+      ]
+    }));
+
+    // Calculate total number of enabled cameras
+    const totalCameras = props.cameraConfigs.cameras.filter(camera => camera.enabled).length;
     
     // Calculate required instance type based on total cameras
     const requiredInstanceType = InstanceTypeUtils.calculateInstanceType(totalCameras);
@@ -122,10 +120,7 @@ export class RtspKvsStack extends cdk.Stack {
     const ec2Instance = new ec2.Instance(this, 'Instance', {
       instanceName: 'kvs-rtsp-cloud-gateway',
       vpc: this.vpc,
-      instanceType: ec2.InstanceType.of(
-        ec2.InstanceClass.T3,
-        InstanceTypeUtils.getInstanceSize(requiredInstanceType)
-      ),
+      instanceType: InstanceTypeUtils.getEc2InstanceType(props.cameraConfigs),
       machineImage: ami,
       securityGroup: securityGroup,
       keyName: props.keyPairName,
@@ -190,10 +185,14 @@ export class RtspKvsStack extends cdk.Stack {
     const executionScript = new Asset(this, 'KvsExecutionScript', { 
       path: path.join(__dirname, '../rtsp-kvs/src/stream-rtsp-to-kvs.sh') 
     });
+    const updateConfigScript = new Asset(this, 'UpdateConfigScript', {
+      path: path.join(__dirname, '../rtsp-kvs/src/update-config.sh')
+    });
 
     installKvsProducerSdkScript.grantRead(ec2Instance.role);
     serviceFile.grantRead(ec2Instance.role);
     executionScript.grantRead(ec2Instance.role);
+    updateConfigScript.grantRead(ec2Instance.role);
 
     const installKvsProducerSdkScriptLocalPath = ec2Instance.userData.addS3DownloadCommand({
       bucket: installKvsProducerSdkScript.bucket,
@@ -212,25 +211,17 @@ export class RtspKvsStack extends cdk.Stack {
       localFile: '/home/ubuntu/stream-rtsp-to-kvs.sh'
     });
 
-    // Create a configuration file for all streams
-    const streamsConfig = customerConfigs.flatMap(customer => 
-      customer.cameras.map(camera => ({
-        url: camera.rtspUrl,
-        streamName: camera.streamName,
-        name: camera.name,
-        id: camera.id,
-        customerId: customer.id,
-        customerName: customer.name,
-        resolution: camera.resolution,
-        fps: camera.fps,
-        bitrate: camera.bitrate
-      }))
-    );
+    ec2Instance.userData.addS3DownloadCommand({
+      bucket: updateConfigScript.bucket,
+      bucketKey: updateConfigScript.s3ObjectKey,
+      localFile: '/home/ubuntu/update-config.sh'
+    });
 
-    // Add the streams configuration to the instance
-    ec2Instance.userData.addCommands(
-      `echo '${JSON.stringify(streamsConfig)}' > /home/ubuntu/streams-config.json`
-    );
+    // Make the update script executable
+    ec2Instance.userData.addCommands('sudo chmod +x /home/ubuntu/update-config.sh');
+
+    // Run the update-config script to get initial configuration
+    ec2Instance.userData.addCommands('/home/ubuntu/update-config.sh');
 
     ec2Instance.userData.addExecuteFileCommand({
       filePath: installKvsProducerSdkScriptLocalPath,

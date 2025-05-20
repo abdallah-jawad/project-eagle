@@ -26,9 +26,16 @@
     "outDir": "./dist",
     "rootDir": "."
   },
+  "include": [
+    "bin/**/*",
+    "lib/**/*",
+    "rtsp-kvs/**/*"
+  ],
   "exclude": [
     "node_modules",
     "cdk.out",
-    "dist"
+    "dist",
+    "frontend/**/*",
+    "computer-vision/**/*"
   ]
 } 

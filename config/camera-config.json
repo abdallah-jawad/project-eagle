@@ -5,6 +5,7 @@
       "client_id": "customer1",
       "enabled": true,
       "zone": "entrance",
+      "rtsp_url": "rtsp://username:password@192.168.1.101:554/stream1",
       "notification_settings": {
         "labels_to_notify_on": ["person", "car"],
         "contact_email": "security@example.com",
@@ -26,6 +27,7 @@
       "client_id": "customer1",
       "enabled": true,
       "zone": "parking",
+      "rtsp_url": "rtsp://username:password@192.168.1.102:554/stream1",
       "notification_settings": {
         "labels_to_notify_on": ["car", "truck"],
         "contact_email": "parking@example.com",

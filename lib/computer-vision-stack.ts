@@ -8,13 +8,18 @@ import { deploymentConfig } from '../config/deployment-config';
 import { InstanceTypeUtils } from './utils/instance-type-utils';
 import * as path from 'path';
 import { Asset } from 'aws-cdk-lib/aws-s3-assets';
+import { CameraConfig } from './interfaces/camera-config';
 
 export interface ComputerVisionStackProps extends cdk.StackProps {
   vpc?: ec2.IVpc;
+  appConfigApp: appconfig.CfnApplication;
+  appConfigEnv: appconfig.CfnEnvironment;
+  appConfigProfile: appconfig.CfnConfigurationProfile;
+  cameraConfigs: CameraConfig;
 }
 
 export class ComputerVisionStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: ComputerVisionStackProps) {
+  constructor(scope: Construct, id: string, props: ComputerVisionStackProps) {
     super(scope, id, props);
     
     // Use the provided VPC or create a new one
@@ -78,36 +83,15 @@ export class ComputerVisionStack extends cdk.Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
-    // Create AppConfig application
-    const appConfigApp = new appconfig.CfnApplication(this, 'ComputerVisionApp', {
-      name: 'computer-vision',
-      description: 'Computer Vision application configuration'
-    });
-
-    // Create AppConfig environment
-    const appConfigEnv = new appconfig.CfnEnvironment(this, 'ComputerVisionEnv', {
-      applicationId: appConfigApp.ref,
-      name: 'production',
-      description: 'Production environment for Computer Vision application'
-    });
-
-    // Create AppConfig configuration profile
-    const appConfigProfile = new appconfig.CfnConfigurationProfile(this, 'CameraConfigProfile', {
-      applicationId: appConfigApp.ref,
-      name: 'camera-config',
-      description: 'Camera configuration profile',
-      locationUri: 'hosted',
-      retrievalRoleArn: role.roleArn
-    });
-
     // Add AppConfig permissions to the EC2 role
     role.addToPolicy(new iam.PolicyStatement({
       actions: [
         'appconfig:GetConfiguration',
-        'appconfig:StartConfigurationSession'
+        'appconfig:StartConfigurationSession',
+        'appconfig:GetLatestConfiguration'
       ],
       resources: [
-        `arn:aws:appconfig:${this.region}:${this.account}:application/${appConfigApp.ref}/environment/${appConfigEnv.ref}/configuration/${appConfigProfile.ref}`
+        `arn:aws:appconfig:${this.region}:${this.account}:application/${props.appConfigApp.ref}/environment/${props.appConfigEnv.ref}/configuration/${props.appConfigProfile.ref}`
       ]
     }));
 
@@ -126,8 +110,8 @@ export class ComputerVisionStack extends cdk.Stack {
     }));
 
     // Get the recommended instance type based on the number of cameras
-    const totalCameras = InstanceTypeUtils.calculateTotalCameras();
-    const requiredInstanceType = InstanceTypeUtils.getRecommendedInstanceType();
+    const totalCameras = InstanceTypeUtils.calculateTotalCameras(props.cameraConfigs);
+    const requiredInstanceType = InstanceTypeUtils.getRecommendedInstanceType(props.cameraConfigs);
     console.log(`Using instance type ${requiredInstanceType} for ${totalCameras} total cameras`);
 
     // Create assets for our application files
@@ -143,7 +127,7 @@ export class ComputerVisionStack extends cdk.Stack {
     // Create the EC2 instance
     const ec2Instance = new ec2.Instance(this, 'ComputerVisionInstance', {
       vpc,
-      instanceType: InstanceTypeUtils.getEc2InstanceType(),
+      instanceType: InstanceTypeUtils.getEc2InstanceType(props.cameraConfigs),
       machineImage: ec2.MachineImage.latestAmazonLinux2(),
       securityGroup,
       role,

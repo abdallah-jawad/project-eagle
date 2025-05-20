@@ -1,6 +1,6 @@
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import { systemConfig } from '../../config/system-config';
-import { customerConfigs } from '../../config/customer-configs';
+import { CameraConfig } from '../interfaces/camera-config';
 
 /**
  * Utility class for EC2 instance type calculations
@@ -8,10 +8,11 @@ import { customerConfigs } from '../../config/customer-configs';
 export class InstanceTypeUtils {
   /**
    * Calculate the total number of cameras across all customers
-   * @returns The total number of cameras
+   * @param cameraConfigs The camera configuration object
+   * @returns The total number of enabled cameras
    */
-  public static calculateTotalCameras(): number {
-    return customerConfigs.reduce((sum, customer) => sum + customer.cameras.length, 0);
+  public static calculateTotalCameras(cameraConfigs: CameraConfig): number {
+    return cameraConfigs.cameras.filter(camera => camera.enabled).length;
   }
 
   /**
@@ -42,19 +43,21 @@ export class InstanceTypeUtils {
 
   /**
    * Get the recommended instance type for the current number of cameras
+   * @param cameraConfigs The camera configuration object
    * @returns The recommended instance type
    */
-  public static getRecommendedInstanceType(): string {
-    const totalCameras = this.calculateTotalCameras();
+  public static getRecommendedInstanceType(cameraConfigs: CameraConfig): string {
+    const totalCameras = this.calculateTotalCameras(cameraConfigs);
     return this.calculateInstanceType(totalCameras);
   }
 
   /**
    * Get the EC2 instance type for the current number of cameras
+   * @param cameraConfigs The camera configuration object
    * @returns The EC2 instance type
    */
-  public static getEc2InstanceType(): ec2.InstanceType {
-    const instanceType = this.getRecommendedInstanceType();
+  public static getEc2InstanceType(cameraConfigs: CameraConfig): ec2.InstanceType {
+    const instanceType = this.getRecommendedInstanceType(cameraConfigs);
     return ec2.InstanceType.of(
       ec2.InstanceClass.T3,
       this.getInstanceSize(instanceType)
