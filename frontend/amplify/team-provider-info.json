@@ -1,0 +1,20 @@
+{
+  "dev": {
+    "awscloudformation": {
+      "AuthRoleName": "amplify-projectvision-dev-3ca6d-authRole",
+      "UnauthRoleArn": "arn:aws:iam::091664994886:role/amplify-projectvision-dev-3ca6d-unauthRole",
+      "AuthRoleArn": "arn:aws:iam::091664994886:role/amplify-projectvision-dev-3ca6d-authRole",
+      "Region": "us-west-1",
+      "DeploymentBucketName": "amplify-projectvision-dev-3ca6d-deployment",
+      "UnauthRoleName": "amplify-projectvision-dev-3ca6d-unauthRole",
+      "StackName": "amplify-projectvision-dev-3ca6d",
+      "StackId": "arn:aws:cloudformation:us-west-1:091664994886:stack/amplify-projectvision-dev-3ca6d/08df41a0-3609-11f0-b7ff-068559a649b9",
+      "AmplifyAppId": "do8vt4551hgwa"
+    },
+    "categories": {
+      "hosting": {
+        "S3AndCloudFront": {}
+      }
+    }
+  }
+}
