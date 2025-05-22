@@ -1,0 +1,23 @@
+.layout {
+  min-height: 100vh;
+  display: flex;
+}
+
+.main {
+  flex: 1;
+  margin-left: 240px;
+  transition: margin-left 0.3s ease;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.mainExpanded {
+  margin-left: 64px;
+}
+
+.content {
+  flex: 1;
+  padding: 2rem;
+  background-color: #f8fafc;
+} 
