@@ -3,6 +3,9 @@ import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
   console.log('Middleware executing for path:', request.nextUrl.pathname);
+
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-url', request.url);
   
   const token = request.cookies.get('auth-storage');
   const isAuthPage = request.nextUrl.pathname === '/login';

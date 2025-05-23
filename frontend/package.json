@@ -4,8 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "next build && npm run copy-build",
-    "copy-build": "xcopy /E /I /Y out build",
+    "build": "next build",
     "start": "next start",
     "lint": "next lint"
   },

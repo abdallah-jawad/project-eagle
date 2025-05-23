@@ -1,13 +1,11 @@
 'use client';
 
-import { FC, useState, useEffect } from 'react';
+import { FC, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import {
   HomeIcon,
-  UserGroupIcon,
-  DocumentTextIcon,
-  Cog6ToothIcon,
   ChartBarIcon,
+  Cog6ToothIcon,
 } from '@heroicons/react/24/outline';
 import Header from '../Header/Header';
 import Sidebar from '../Sidebar/Sidebar';
@@ -16,16 +14,8 @@ import { LayoutProps } from './types';
 
 const Layout: FC<LayoutProps> = ({ children, user }) => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [showLayout, setShowLayout] = useState(true);
   const pathname = usePathname();
-
-  useEffect(() => {
-    setShowLayout(pathname !== '/login');
-  }, [pathname]);
-
-  if (!showLayout) {
-    return <>{children}</>;
-  }
+  const isLoginPage = pathname === '/login/' || pathname === '/login';
 
   const navItems = [
     {
@@ -45,6 +35,12 @@ const Layout: FC<LayoutProps> = ({ children, user }) => {
     },
   ];
 
+  // If we're on the login page, just render the children without the layout
+  if (isLoginPage) {
+    return <>{children}</>;
+  }
+
+  // Otherwise render the full layout
   return (
     <div className={styles.layout}>
       <Sidebar

@@ -1,4 +1,7 @@
+'use client';
+
 import { FC } from 'react';
+import Image from 'next/image';
 import styles from './Header.module.css';
 import { HeaderProps } from './types';
 
@@ -12,7 +15,13 @@ const Header: FC<HeaderProps> = ({ title = 'Project Eagle', user }) => {
         {user && (
           <div className={styles.userInfo}>
             {user.avatar && (
-              <img src={user.avatar} alt={user.name} className={styles.avatar} />
+              <Image
+                src={user.avatar}
+                alt={user.name}
+                width={32}
+                height={32}
+                className={styles.avatar}
+              />
             )}
             <span className={styles.userName}>{user.name}</span>
           </div>
