@@ -4,6 +4,7 @@ import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as appconfig from 'aws-cdk-lib/aws-appconfig';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { deploymentConfig } from '../config/deployment-config';
 import { InstanceTypeUtils } from './utils/instance-type-utils';
 import * as path from 'path';
@@ -16,6 +17,9 @@ export interface ComputerVisionStackProps extends cdk.StackProps {
   appConfigEnv: appconfig.CfnEnvironment;
   appConfigProfile: appconfig.CfnConfigurationProfile;
   cameraConfigs: CameraConfig;
+  environment: string;
+  userTable: dynamodb.Table;
+  jwtSecret: secretsmanager.Secret;
 }
 
 export class ComputerVisionStack extends cdk.Stack {
@@ -107,6 +111,29 @@ export class ComputerVisionStack extends cdk.Stack {
         'dynamodb:BatchWriteItem'
       ],
       resources: [detectionsTable.tableArn]
+    }));
+
+    // Add auth permissions to the EC2 role
+    role.addToPolicy(new iam.PolicyStatement({
+      actions: [
+        'dynamodb:GetItem',
+        'dynamodb:PutItem',
+        'dynamodb:UpdateItem',
+        'dynamodb:DeleteItem',
+        'dynamodb:Query',
+        'dynamodb:Scan',
+      ],
+      resources: [
+        props.userTable.tableArn,
+        `${props.userTable.tableArn}/index/*`,
+      ],
+    }));
+
+    role.addToPolicy(new iam.PolicyStatement({
+      actions: [
+        'secretsmanager:GetSecretValue',
+      ],
+      resources: [props.jwtSecret.secretArn],
     }));
 
     // Get the recommended instance type based on the number of cameras

@@ -24,7 +24,7 @@ class CameraManager:
         self.camera_threads = {}
         self.websocket_server = WebSocketServer()
         
-    async def start(self):
+    async def start(self): 
         """Start processing all enabled cameras and WebSocket server"""
         self.running = True
         
