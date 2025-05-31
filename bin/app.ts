@@ -12,8 +12,8 @@ const app = new cdk.App();
 
 // Default environment configuration
 const env = {
-  account: process.env.CDK_DEFAULT_ACCOUNT || '091664994886',
-  region: process.env.CDK_DEFAULT_REGION || 'us-east-1',
+  account: '091664994886',
+  region: 'us-west-1',
   profile: 'project-eagle'
 };
 

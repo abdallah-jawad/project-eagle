@@ -61,22 +61,7 @@ export class DeploymentStack extends cdk.Stack {
               branch: props.github.branch,
               oauthToken: SecretValue.secretsManager(props.github.tokenSecretName),
               output: new codepipeline.Artifact('SourceOutput'),
-              variablesNamespace: 'SourceVariables',
-              // Only trigger on changes to the specified directory
-              filters: [
-                {
-                  jsonPath: '$.commits[*].modified[*]',
-                  matchEquals: `${props.watchDirectory}/**`
-                },
-                {
-                  jsonPath: '$.commits[*].added[*]',
-                  matchEquals: `${props.watchDirectory}/**`
-                },
-                {
-                  jsonPath: '$.commits[*].removed[*]',
-                  matchEquals: `${props.watchDirectory}/**`
-                }
-              ]
+              variablesNamespace: 'SourceVariables'
             })
           ]
         },

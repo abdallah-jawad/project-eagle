@@ -39,13 +39,6 @@ export class ComputerVisionStack extends cdk.Stack {
       allowAllOutbound: true,
     });
 
-    // Allow SSH access from the specified IP
-    securityGroup.addIngressRule(
-      ec2.Peer.ipv4(deploymentConfig.myIpAddress + '/32'),
-      ec2.Port.tcp(22),
-      'Allow SSH access'
-    );
-
     // Allow SSH access from EC2 Instance Connect service
     securityGroup.addIngressRule(
       ec2.Peer.prefixList('pl-0e4bcff02b13bef1e'),

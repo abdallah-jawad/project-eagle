@@ -50,13 +50,6 @@ export class RtspKvsStack extends cdk.Stack {
       'Allow EC2 Instance Connect'
     );
 
-    // Allow SSH from your IP
-    securityGroup.addIngressRule(
-      ec2.Peer.ipv4(`${props.myIpAddress}/32`),
-      ec2.Port.tcp(22),
-      'Allow SSH Access'
-    );
-
     // Create a single IAM role for all instances
     const role = new iam.Role(this, 'ec2Role', {
       assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
@@ -108,7 +101,7 @@ export class RtspKvsStack extends cdk.Stack {
 
     // Use Ubuntu Server 22.04
     const ami = ec2.MachineImage.genericLinux({
-      'us-east-1': 'ami-0d192a81a9bee8a6e',     
+      'us-west-1': 'ami-0c7217cdde317cfec',
     });
 
     const rootVolume: ec2.BlockDevice = {

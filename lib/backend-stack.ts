@@ -44,6 +44,13 @@ export class BackendStack extends cdk.Stack {
       'Allow HTTP traffic'
     );
 
+      // Allow SSH from EC2 Instance Connect service
+    securityGroup.addIngressRule(
+      ec2.Peer.prefixList('pl-0e4bcff02b13bef1e'),
+      ec2.Port.tcp(22),
+      'Allow EC2 Instance Connect'
+    );
+
     // Create IAM role for EC2
     const role = new iam.Role(this, 'BackendRole', {
       assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
@@ -52,6 +59,16 @@ export class BackendStack extends cdk.Stack {
         iam.ManagedPolicy.fromAwsManagedPolicyName('AWSCodeDeployRole'),
       ],
     });
+
+      // Add EC2 Instance Connect permissions
+      role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'));
+      role.addToPolicy(new iam.PolicyStatement({
+        actions: [
+          'ec2-instance-connect:SendSSHPublicKey'
+        ],
+        resources: ['*']
+      }));
+  
 
     // Add AppConfig permissions
     role.addToPolicy(new iam.PolicyStatement({
