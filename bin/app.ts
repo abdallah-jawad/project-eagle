@@ -10,22 +10,30 @@ import { BackendStack } from '../lib/backend-stack';
 
 const app = new cdk.App();
 
-// Default environment configuration
 const env = {
   account: '091664994886',
-  region: 'us-west-1',
-  profile: 'project-eagle'
+  region: 'us-east-1',
+  profile: 'eagle'
 };
 
 // Create the AuthStack
 const authStack = new AuthStack(app, 'AuthStack', {
   environment: deploymentConfig.environment,
-  env
+  env,
+  crossRegionReferences: false
 });
+
+// Create the BackendStack
+new BackendStack(app, 'BackendStack', {
+  environment: deploymentConfig.environment,
+  env,
+  crossRegionReferences: false
+}); 
 
 // Create the KvsStack
 const kvsStack = new KvsStack(app, 'KvsStack', {
-  env
+  env,
+  crossRegionReferences: false
 });
 
 // Create the RtspKvsStack
@@ -38,7 +46,8 @@ const rtspKvsStack = new RtspKvsStack(app, 'RtspKvsStack', {
     appConfigEnv: kvsStack.appConfigEnv,
     appConfigProfile: kvsStack.appConfigProfile
   },
-  env
+  env,
+  crossRegionReferences: false
 });
 
 // Create the ComputerVisionStack and pass the VPC from RtspKvsStack and auth resources
@@ -51,17 +60,6 @@ const computerVisionStack = new ComputerVisionStack(app, 'ComputerVisionStack', 
   environment: deploymentConfig.environment,
   userTable: authStack.userTable,
   jwtSecret: authStack.jwtSecret,
-  env
+  env,
+  crossRegionReferences: false
 });
-
-// Create the BackendStack
-new BackendStack(app, 'BackendStack', {
-  vpc: rtspKvsStack.vpc,  // Reuse the same VPC
-  appConfigApp: kvsStack.appConfigApp,
-  appConfigEnv: kvsStack.appConfigEnv,
-  appConfigProfile: kvsStack.appConfigProfile,
-  userTable: authStack.userTable,
-  jwtSecret: authStack.jwtSecret,
-  environment: deploymentConfig.environment,
-  env
-}); 

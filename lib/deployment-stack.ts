@@ -5,10 +5,11 @@ import * as codepipeline from 'aws-cdk-lib/aws-codepipeline';
 import * as codepipeline_actions from 'aws-cdk-lib/aws-codepipeline-actions';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as codebuild from 'aws-cdk-lib/aws-codebuild';
 import { SecretValue } from 'aws-cdk-lib';
 import { GitHubConfig } from '../config/deployment-config';
 
-export interface DeploymentStackProps extends cdk.StackProps {
+export interface DeploymentStackProps extends cdk.NestedStackProps {
   instance: cdk.aws_ec2.Instance;
   github: GitHubConfig;
   watchDirectory: string;
@@ -16,7 +17,7 @@ export interface DeploymentStackProps extends cdk.StackProps {
   pipelineName: string;
 }
 
-export class DeploymentStack extends cdk.Stack {
+export class DeploymentStack extends cdk.NestedStack {
   constructor(scope: Construct, id: string, props: DeploymentStackProps) {
     super(scope, id, props);
 
@@ -29,7 +30,7 @@ export class DeploymentStack extends cdk.Stack {
     const codeDeployRole = new iam.Role(this, 'CodeDeployRole', {
       assumedBy: new iam.ServicePrincipal('codedeploy.amazonaws.com'),
       managedPolicies: [
-        iam.ManagedPolicy.fromAwsManagedPolicyName('AWSCodeDeployRoleForEC2')
+        iam.ManagedPolicy.fromAwsManagedPolicyName('AWSCodeDeployFullAccess')
       ]
     });
 
@@ -38,13 +39,35 @@ export class DeploymentStack extends cdk.Stack {
       application,
       deploymentConfig: codedeploy.ServerDeploymentConfig.ALL_AT_ONCE,
       ec2InstanceTags: new codedeploy.InstanceTagSet({
-        'Name': [props.instance.instanceId]
+        'Name': ['BackendInstance'],
+        'Environment': ['production'],
+        'Stack': ['backend']
       }),
       role: codeDeployRole,
       autoRollback: {
         failedDeployment: true,
         stoppedDeployment: true
       }
+    });
+
+    // Create CodeBuild project for copying specified directory
+    const buildProject = new codebuild.PipelineProject(this, 'BuildProject', {
+      buildSpec: codebuild.BuildSpec.fromObject({
+        version: '0.2',
+        phases: {
+          build: {
+            commands: [
+              `mkdir -p ${props.watchDirectory}-build`,
+              `cp -r ${props.watchDirectory}/* ${props.watchDirectory}-build/`,
+              `cp ${props.watchDirectory}/appspec.yml ${props.watchDirectory}-build/`
+            ]
+          }
+        },
+        artifacts: {
+          'base-directory': `${props.watchDirectory}-build`,
+          files: ['**/*']
+        }
+      })
     });
 
     // Create pipeline
@@ -56,12 +79,24 @@ export class DeploymentStack extends cdk.Stack {
           actions: [
             new codepipeline_actions.GitHubSourceAction({
               actionName: 'GitHub_Source',
-              owner: props.github.owner,
+              owner: 'abdallah-jawad',
               repo: props.github.repo,
               branch: props.github.branch,
               oauthToken: SecretValue.secretsManager(props.github.tokenSecretName),
               output: new codepipeline.Artifact('SourceOutput'),
-              variablesNamespace: 'SourceVariables'
+              variablesNamespace: 'SourceVariables',
+              runOrder: 1
+            })
+          ]
+        },
+        {
+          stageName: 'Build',
+          actions: [
+            new codepipeline_actions.CodeBuildAction({
+              actionName: 'Build',
+              project: buildProject,
+              input: new codepipeline.Artifact('SourceOutput'),
+              outputs: [new codepipeline.Artifact('BuildOutput')]
             })
           ]
         },
@@ -70,7 +105,7 @@ export class DeploymentStack extends cdk.Stack {
           actions: [
             new codepipeline_actions.CodeDeployServerDeployAction({
               actionName: 'CodeDeploy',
-              input: new codepipeline.Artifact('SourceOutput'),
+              input: new codepipeline.Artifact('BuildOutput'),
               deploymentGroup
             })
           ]

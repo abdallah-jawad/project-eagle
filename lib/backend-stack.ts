@@ -2,19 +2,10 @@ import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as iam from 'aws-cdk-lib/aws-iam';
-import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
-import * as appconfig from 'aws-cdk-lib/aws-appconfig';
-import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { DeploymentStack } from './deployment-stack';
 import { deploymentConfig } from '../config/deployment-config';
 
 export interface BackendStackProps extends cdk.StackProps {
-  vpc?: ec2.IVpc;
-  appConfigApp: appconfig.CfnApplication;
-  appConfigEnv: appconfig.CfnEnvironment;
-  appConfigProfile: appconfig.CfnConfigurationProfile;
-  userTable: dynamodb.Table;
-  jwtSecret: secretsmanager.Secret;
   environment: string;
 }
 
@@ -25,7 +16,7 @@ export class BackendStack extends cdk.Stack {
     super(scope, id, props);
 
     // Use the provided VPC or create a new one
-    const vpc = props?.vpc || new ec2.Vpc(this, 'BackendVpc', {
+    const vpc = new ec2.Vpc(this, 'BackendVpc', {
       maxAzs: 2,
       natGateways: 0, // To keep costs down
     });
@@ -44,7 +35,7 @@ export class BackendStack extends cdk.Stack {
       'Allow HTTP traffic'
     );
 
-      // Allow SSH from EC2 Instance Connect service
+    // Allow SSH from EC2 Instance Connect service
     securityGroup.addIngressRule(
       ec2.Peer.prefixList('pl-0e4bcff02b13bef1e'),
       ec2.Port.tcp(22),
@@ -56,7 +47,7 @@ export class BackendStack extends cdk.Stack {
       assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
       managedPolicies: [
         iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'),
-        iam.ManagedPolicy.fromAwsManagedPolicyName('AWSCodeDeployRole'),
+        iam.ManagedPolicy.fromAwsManagedPolicyName('AWSCodeDeployFullAccess'),
       ],
     });
 
@@ -78,7 +69,7 @@ export class BackendStack extends cdk.Stack {
         'appconfig:GetLatestConfiguration'
       ],
       resources: [
-        `arn:aws:appconfig:${this.region}:${this.account}:application/${props.appConfigApp.ref}/environment/${props.appConfigEnv.ref}/configuration/${props.appConfigProfile.ref}`
+        `*`
       ]
     }));
 
@@ -93,8 +84,7 @@ export class BackendStack extends cdk.Stack {
         'dynamodb:Scan',
       ],
       resources: [
-        props.userTable.tableArn,
-        `${props.userTable.tableArn}/index/*`,
+        `*`,
       ],
     }));
 
@@ -103,7 +93,7 @@ export class BackendStack extends cdk.Stack {
       actions: [
         'secretsmanager:GetSecretValue',
       ],
-      resources: [props.jwtSecret.secretArn],
+      resources: [`*`],
     }));
 
     // Create EC2 instance
@@ -112,24 +102,51 @@ export class BackendStack extends cdk.Stack {
       vpcSubnets: {
         subnetType: ec2.SubnetType.PUBLIC,
       },
-      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T4G, ec2.InstanceSize.NANO),
-      machineImage: ec2.MachineImage.latestAmazonLinux2({
-        cpuType: ec2.AmazonLinuxCpuType.ARM_64,
-      }),
+      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.NANO),
+      machineImage: ec2.MachineImage.latestAmazonLinux2(),
       securityGroup,
       role,
       userData: ec2.UserData.forLinux(),
     });
 
-    // Add basic user data to install CodeDeploy agent
+    // Add tags to the instance
+    cdk.Tags.of(instance).add('Name', 'BackendInstance');
+    cdk.Tags.of(instance).add('Environment', 'production');
+    cdk.Tags.of(instance).add('Stack', 'backend');
+
+    // Add improved user data script with better logging
     instance.userData.addCommands(
       '#!/bin/bash',
-      'yum update -y',
-      'yum install -y ruby wget',
-      'wget https://aws-codedeploy-${AWS::Region}.s3.amazonaws.com/latest/install',
-      'chmod +x ./install',
-      './install auto',
-      'service codedeploy-agent start'
+      '# UserData Version: 1.0',
+      'exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1',
+      'echo "User data script started execution."'
+    );
+
+    // Update system and install required packages
+    instance.userData.addCommands(
+      'echo "Updating system and installing required packages..." >> /var/log/user-data.log',
+      'yum update -y >> /var/log/user-data.log 2>&1',
+      'yum install -y ruby wget python3 python3-pip unzip aws-cli >> /var/log/user-data.log 2>&1',
+      'echo "System updated and required packages installed." >> /var/log/user-data.log'
+    );
+
+    // Install and configure CodeDeploy agent
+    instance.userData.addCommands(
+      'echo "Installing CodeDeploy agent..." >> /var/log/user-data.log',
+      'REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region) >> /var/log/user-data.log 2>&1',
+      'wget https://aws-codedeploy-${REGION}.s3.amazonaws.com/latest/install >> /var/log/user-data.log 2>&1',
+      'chmod +x ./install >> /var/log/user-data.log 2>&1',
+      './install auto >> /var/log/user-data.log 2>&1',
+      'service codedeploy-agent start >> /var/log/user-data.log 2>&1',
+      'echo "CodeDeploy agent installed and started." >> /var/log/user-data.log'
+    );
+
+    // Create application directory
+    instance.userData.addCommands(
+      'echo "Creating application directory..." >> /var/log/user-data.log',
+      'mkdir -p /opt/backend >> /var/log/user-data.log 2>&1',
+      'chown -R ec2-user:ec2-user /opt/backend >> /var/log/user-data.log 2>&1',
+      'echo "Application directory created." >> /var/log/user-data.log'
     );
 
     // Create deployment stack
@@ -138,11 +155,7 @@ export class BackendStack extends cdk.Stack {
       github: deploymentConfig.github,
       watchDirectory: 'backend',
       applicationName: 'BackendApplication',
-      pipelineName: 'BackendPipeline',
-      env: {
-        account: this.account,
-        region: this.region
-      }
+      pipelineName: 'BackendPipeline'
     });
 
     // Store the API endpoint

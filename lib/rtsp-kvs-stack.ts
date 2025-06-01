@@ -16,13 +16,17 @@ export interface RtspKvsStackProps extends cdk.StackProps {
     appConfigEnv: appconfig.CfnEnvironment;
     appConfigProfile: appconfig.CfnConfigurationProfile;
   };
+  env: cdk.Environment;
 }
 
 export class RtspKvsStack extends cdk.Stack {
   public readonly vpc: ec2.IVpc;
   
   constructor(scope: Construct, id: string, props: RtspKvsStackProps) {
-    super(scope, id, props);
+    super(scope, id, {
+      ...props,
+      env: props.env
+    });
 
     // Create a single VPC for all cameras
     this.vpc = new ec2.Vpc(this, 'VPC', {
@@ -100,8 +104,9 @@ export class RtspKvsStack extends cdk.Stack {
     console.log(`Using instance type ${requiredInstanceType} for ${totalCameras} total cameras`);
 
     // Use Ubuntu Server 22.04
+    // Note: We only specify us-east-1 as that's our target region
     const ami = ec2.MachineImage.genericLinux({
-      'us-west-1': 'ami-0c7217cdde317cfec',
+      [this.region]: 'ami-0a7d80731ae1b2435', // Use the stack's region
     });
 
     const rootVolume: ec2.BlockDevice = {
