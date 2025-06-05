@@ -1,6 +1,6 @@
-fastapi==0.104.1
-uvicorn==0.24.0
-aws-cdk-lib==2.99.1
+fastapi>=0.95.0
+uvicorn>=0.20.0
+aws-cdk-lib>=2.99.1
 constructs>=10.0.0
-aws-cdk.aws-ec2==1.204.0
-aws-cdk.aws-iam==1.204.0 
+aws-cdk.aws-ec2>=1.204.0
+aws-cdk.aws-iam>=1.204.0 
