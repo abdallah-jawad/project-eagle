@@ -96,6 +96,34 @@ export class BackendStack extends cdk.Stack {
       resources: [`*`],
     }));
 
+    // Add full KMS permissions
+    role.addToPolicy(new iam.PolicyStatement({
+      actions: [
+        'kms:Decrypt',
+        'kms:DescribeKey',
+        'kms:Encrypt',
+        'kms:ReEncrypt*',
+        'kms:GenerateDataKey*',
+        'kms:CreateGrant',
+        'kms:ListGrants',
+        'kms:RevokeGrant'
+      ],
+      resources: ['*']
+    }));
+
+    role.addToPolicy(new iam.PolicyStatement({
+      actions: [
+        's3:GetObject',
+        's3:GetObjectVersion',
+        's3:ListBucket',
+        's3:ListAllMyBuckets'
+      ],
+      resources: [
+        'arn:aws:s3:::*',
+        'arn:aws:s3:::*/*'
+      ]
+    }));
+
     // Create EC2 instance
     const instance = new ec2.Instance(this, 'BackendInstance', {
       vpc,
