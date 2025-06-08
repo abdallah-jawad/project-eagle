@@ -15,10 +15,9 @@ export class BackendStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: BackendStackProps) {
     super(scope, id, props);
 
-    // Use the provided VPC or create a new one
     const vpc = new ec2.Vpc(this, 'BackendVpc', {
       maxAzs: 2,
-      natGateways: 0, // To keep costs down
+      natGateways: 1, 
     });
 
     // Create security group
