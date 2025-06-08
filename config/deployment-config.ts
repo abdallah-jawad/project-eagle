@@ -17,9 +17,9 @@ export const deploymentConfig: DeploymentConfig = {
   myIpAddress: process.env.MY_IP_ADDRESS || '0.0.0.0/32',
   keyPairName: process.env.KEY_PAIR_NAME || 'project-eagle-key',
   github: {
-    owner: process.env.GITHUB_OWNER || 'your-github-username',
-    repo: process.env.GITHUB_REPO || 'project-eagle',
-    branch: process.env.GITHUB_BRANCH || 'main',
-    tokenSecretName: process.env.GITHUB_TOKEN_SECRET_NAME || 'github-token'
+    owner: 'abdallah-jawad',
+    repo: 'project-eagle',
+    branch: 'main',
+    tokenSecretName: 'github-token'
   }
 }; 

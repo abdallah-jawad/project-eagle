@@ -47,3 +47,17 @@ coverage/
 # Model files
 *.onnx
 computer-vision/model/*.onnx
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.env/
+.venv/
+*.egg-info/
+.installed.cfg
+*.egg
