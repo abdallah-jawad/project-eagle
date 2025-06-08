@@ -35,6 +35,13 @@ export class BackendStack extends cdk.Stack {
       'Allow HTTP traffic'
     );
 
+    // Allow inbound traffic on port 8080
+    securityGroup.addIngressRule(
+      ec2.Peer.anyIpv4(),
+      ec2.Port.tcp(8080),
+      'Allow traffic on port 8080'
+    );
+
     // Allow SSH from EC2 Instance Connect service
     securityGroup.addIngressRule(
       ec2.Peer.prefixList('pl-0e4bcff02b13bef1e'),
