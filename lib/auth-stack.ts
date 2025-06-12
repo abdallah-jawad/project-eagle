@@ -16,7 +16,7 @@ export class AuthStack extends cdk.Stack {
 
     // Create DynamoDB table for users
     this.userTable = new dynamodb.Table(this, 'UsersTable', {
-      tableName: `${props.environment}-users`,
+      tableName: `users`,
       partitionKey: { name: 'email', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
@@ -25,24 +25,13 @@ export class AuthStack extends cdk.Stack {
 
     // Create JWT secret in Secrets Manager
     this.jwtSecret = new secretsmanager.Secret(this, 'JwtSecret', {
-      secretName: `${props.environment}/jwt-secret`,
+      secretName: `jwt-secret`,
       description: 'JWT secret for authentication',
       generateSecretString: {
         secretStringTemplate: JSON.stringify({ secret: '' }),
         generateStringKey: 'secret',
         excludeCharacters: '{}[]()\'"/\\@:',
       },
-    });
-
-    // Output the table name and secret ARN
-    new cdk.CfnOutput(this, 'UserTableName', {
-      value: this.userTable.tableName,
-      description: 'Name of the users DynamoDB table',
-    });
-
-    new cdk.CfnOutput(this, 'JwtSecretArn', {
-      value: this.jwtSecret.secretArn,
-      description: 'ARN of the JWT secret in Secrets Manager',
     });
   }
 } 

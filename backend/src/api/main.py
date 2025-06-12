@@ -31,6 +31,5 @@ from .routes import cameras
 app.include_router(cameras.router, prefix="/api/v1", tags=["Cameras"])
 
 # Import and include routers
-# from .routes import auth, streams
-# app.include_router(auth.router, prefix="/api/v1", tags=["Authentication"])
-# app.include_router(streams.router, prefix="/api/v1", tags=["Streams"]) 
+from .routes import auth
+app.include_router(auth.router, prefix="/api/v1", tags=["Authentication"])

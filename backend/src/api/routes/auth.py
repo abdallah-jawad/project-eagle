@@ -5,8 +5,7 @@ from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from ..models import User, UserInDB, Token, TokenData
-from ..config.aws import get_jwt_secret, get_dynamodb_table
-import os
+from ..dependencies.aws import get_jwt_secret, get_users_dynamodb_table
 
 # Security configuration
 ALGORITHM = "HS256"
@@ -16,7 +15,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Get AWS resources
-dynamodb_table = get_dynamodb_table()
+dynamodb_table = get_users_dynamodb_table()
 SECRET_KEY = get_jwt_secret()
 
 router = APIRouter()

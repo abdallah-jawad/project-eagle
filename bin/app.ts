@@ -19,21 +19,18 @@ const env = {
 // Create the AuthStack
 const authStack = new AuthStack(app, 'AuthStack', {
   environment: deploymentConfig.environment,
-  env,
-  crossRegionReferences: false
+  env
 });
 
 // Create the BackendStack
-new BackendStack(app, 'BackendStack', {
+const backendStack = new BackendStack(app, 'BackendStack', {
   environment: deploymentConfig.environment,
-  env,
-  crossRegionReferences: false
+  env
 }); 
 
 // Create the KvsStack
 const kvsStack = new KvsStack(app, 'KvsStack', {
-  env,
-  crossRegionReferences: false
+  env
 });
 
 // Create the RtspKvsStack
@@ -46,8 +43,7 @@ const rtspKvsStack = new RtspKvsStack(app, 'RtspKvsStack', {
     appConfigEnv: kvsStack.appConfigEnv,
     appConfigProfile: kvsStack.appConfigProfile
   },
-  env,
-  crossRegionReferences: false
+  env
 });
 
 // Create the ComputerVisionStack and pass the VPC from RtspKvsStack and auth resources
@@ -60,6 +56,5 @@ const computerVisionStack = new ComputerVisionStack(app, 'ComputerVisionStack', 
   environment: deploymentConfig.environment,
   userTable: authStack.userTable,
   jwtSecret: authStack.jwtSecret,
-  env,
-  crossRegionReferences: false
+  env
 });

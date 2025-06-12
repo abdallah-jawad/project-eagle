@@ -7,7 +7,7 @@ from pathlib import Path
 router = APIRouter()
 
 def load_camera_configs():
-    config_path = Path("/Users/khalidll/Desktop/project-eagle/config/camera-config.json")
+    config_path = Path("C:/Users/abdal/Desktop/project-eagle/config/camera-config.json")
     try:
         with open(config_path, 'r') as f:
             return json.load(f)
