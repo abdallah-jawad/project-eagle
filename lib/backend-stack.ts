@@ -156,7 +156,14 @@ export class BackendStack extends cdk.Stack {
     instance.userData.addCommands(
       'echo "Updating system and installing required packages..." >> /var/log/user-data.log',
       'yum update -y >> /var/log/user-data.log 2>&1',
-      'yum install -y ruby wget python3 python3-pip unzip aws-cli >> /var/log/user-data.log 2>&1',
+      'yum install -y ruby wget unzip aws-cli >> /var/log/user-data.log 2>&1',
+      'echo "Installing Python 3.8..." >> /var/log/user-data.log',
+      'amazon-linux-extras enable python3.8 >> /var/log/user-data.log 2>&1',
+      'yum clean metadata >> /var/log/user-data.log 2>&1',
+      'yum install -y python38 python38-pip python38-devel >> /var/log/user-data.log 2>&1',
+      'alternatives --install /usr/bin/python python /usr/bin/python3.8 1 >> /var/log/user-data.log 2>&1',
+      'alternatives --set python /usr/bin/python3.8 >> /var/log/user-data.log 2>&1',
+      'echo "Python 3.8 installed and configured as default." >> /var/log/user-data.log',
       'echo "System updated and required packages installed." >> /var/log/user-data.log'
     );
 

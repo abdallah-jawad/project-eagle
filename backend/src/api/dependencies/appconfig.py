@@ -1,10 +1,11 @@
 import boto3
 import json
 from typing import Dict, Any
+from ..config import AWS_REGION
 
 def get_appconfig_client():
     """Get an AppConfig client"""
-    return boto3.client('appconfigdata')
+    return boto3.client('appconfigdata', region_name=AWS_REGION)
 
 def get_camera_configs() -> Dict[str, Any]:
     """

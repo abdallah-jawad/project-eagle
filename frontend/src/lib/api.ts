@@ -3,7 +3,7 @@ import axios from 'axios';
 const isLocal = process.env.NEXT_PUBLIC_IS_LOCAL === 'true';
 export const API_BASE_URL = isLocal 
   ? 'http://localhost:8080/api/v1'
-  : 'http://3.93.248.72:8080/api/v1';
+  : 'http://3.86.45.230:8080/api/v1';
 
 // Create axios instance with default config
 export const api = axios.create({
