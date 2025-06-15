@@ -156,7 +156,7 @@ export class BackendStack extends cdk.Stack {
     instance.userData.addCommands(
       'echo "Updating system and installing required packages..." >> /var/log/user-data.log',
       'yum update -y >> /var/log/user-data.log 2>&1',
-      'yum install -y ruby wget unzip aws-cli >> /var/log/user-data.log 2>&1',
+      'yum install -y ruby wget unzip aws-cli openssl >> /var/log/user-data.log 2>&1',
       'echo "Installing Python 3.8..." >> /var/log/user-data.log',
       'amazon-linux-extras enable python3.8 >> /var/log/user-data.log 2>&1',
       'yum clean metadata >> /var/log/user-data.log 2>&1',
@@ -165,6 +165,16 @@ export class BackendStack extends cdk.Stack {
       'alternatives --set python /usr/bin/python3.8 >> /var/log/user-data.log 2>&1',
       'echo "Python 3.8 installed and configured as default." >> /var/log/user-data.log',
       'echo "System updated and required packages installed." >> /var/log/user-data.log'
+    );
+
+    // Generate SSL certificates
+    instance.userData.addCommands(
+      'echo "Generating SSL certificates..." >> /var/log/user-data.log',
+      'mkdir -p /etc/ssl/private >> /var/log/user-data.log 2>&1',
+      'openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/ssl/private/server.key -out /etc/ssl/private/server.crt -subj "/CN=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)" >> /var/log/user-data.log 2>&1',
+      'chmod 600 /etc/ssl/private/server.key >> /var/log/user-data.log 2>&1',
+      'chmod 644 /etc/ssl/private/server.crt >> /var/log/user-data.log 2>&1',
+      'echo "SSL certificates generated." >> /var/log/user-data.log'
     );
 
     // Install and configure CodeDeploy agent

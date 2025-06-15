@@ -6,4 +6,4 @@ pkill -f uvicorn || true
 
 # Start the FastAPI application
 cd /opt/backend
-nohup uvicorn src.api.main:app --host 0.0.0.0 --port 8080 >> /var/log/fastapi.log 2>&1 & 
+nohup uvicorn src.api.main:app --host 0.0.0.0 --port 8080 --ssl-keyfile /etc/ssl/private/server.key --ssl-certfile /etc/ssl/private/server.crt >> /var/log/fastapi.log 2>&1 & 
