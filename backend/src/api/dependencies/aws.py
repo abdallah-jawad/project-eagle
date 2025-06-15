@@ -1,6 +1,7 @@
 import boto3
 import os
 from botocore.exceptions import ClientError
+from ..config import AWS_REGION, JWT_SECRET_NAME, DYNAMODB_TABLE_NAME
 
 _jwt_secret = None
 
@@ -11,12 +12,11 @@ def get_jwt_secret():
         session = boto3.session.Session()
         client = session.client(
             'secretsmanager',
-            region_name='us-east-1'  # Explicitly set the region
+            region_name=AWS_REGION
         )
         
         try:
-            secret_name = "jwt-secret"
-            response = client.get_secret_value(SecretId=secret_name)
+            response = client.get_secret_value(SecretId=JWT_SECRET_NAME)
             secret = response['SecretString']
             _jwt_secret = secret
         except ClientError as e:
@@ -27,6 +27,5 @@ def get_jwt_secret():
 
 def get_users_dynamodb_table():
     """Get DynamoDB table resource"""
-    dynamodb = boto3.resource('dynamodb')
-    table_name = "users"
-    return dynamodb.Table(table_name) 
+    dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
+    return dynamodb.Table(DYNAMODB_TABLE_NAME) 
