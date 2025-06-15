@@ -9,11 +9,11 @@ import {
 } from '@heroicons/react/24/outline';
 import Header from '../Header/Header';
 import Sidebar from '../Sidebar/Sidebar';
-import styles from './Layout.module.css';
-import { LayoutProps } from './types';
+import styles from './MainLayout.module.css';
 import { useAuthStore } from '@/store/auth';
+import { LayoutProps } from './types';
 
-const Layout: FC<LayoutProps> = ({ children }) => {
+const MainLayout: FC<LayoutProps> = ({ children }) => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const pathname = usePathname();
   const isLoginPage = pathname === '/login/' || pathname === '/login';
@@ -64,4 +64,4 @@ const Layout: FC<LayoutProps> = ({ children }) => {
   );
 };
 
-export default Layout; 
+export default MainLayout; 
