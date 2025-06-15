@@ -14,6 +14,7 @@ class UserInDB(User):
 class Token(BaseModel):
     access_token: str
     token_type: str
+    client_id: str
 
 class TokenData(BaseModel):
     email: Optional[str] = None

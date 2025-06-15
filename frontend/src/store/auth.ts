@@ -11,24 +11,40 @@ interface User {
 
 interface AuthState {
   user: User | null;
-  token: string | null;
   isAuthenticated: boolean;
   login: (user: User, token: string) => void;
   logout: () => void;
 }
 
+// Function to set the auth token cookie
+const setAuthCookie = (token: string | null) => {
+  if (token) {
+    // Set cookie with security flags
+    document.cookie = `auth-token=${token}; path=/; secure; samesite=strict`;
+  } else {
+    // Remove cookie
+    document.cookie = 'auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; secure; samesite=strict';
+  }
+};
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
       user: null,
-      token: null,
       isAuthenticated: false,
-      login: (user: User, token: string) =>
-        set({ user, token, isAuthenticated: true }),
-      logout: () => set({ user: null, token: null, isAuthenticated: false }),
+      login: (user: User, token: string) => {
+        setAuthCookie(token);
+        set({ user, isAuthenticated: true });
+      },
+      logout: () => {
+        setAuthCookie(null);
+        set({ user: null, isAuthenticated: false });
+      },
     }),
     {
       name: 'auth-storage',
+      // Only persist user data in localStorage, not the token
+      partialize: (state) => ({ user: state.user, isAuthenticated: state.isAuthenticated }),
     }
   )
 ); 

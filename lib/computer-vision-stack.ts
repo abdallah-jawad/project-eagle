@@ -3,23 +3,14 @@ import { Construct } from 'constructs';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
-import * as appconfig from 'aws-cdk-lib/aws-appconfig';
-import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
-import { deploymentConfig } from '../config/deployment-config';
 import { InstanceTypeUtils } from './utils/instance-type-utils';
 import * as path from 'path';
 import { Asset } from 'aws-cdk-lib/aws-s3-assets';
-import { CameraConfig } from './interfaces/camera-config';
+import * as appconfig from 'aws-cdk-lib/aws-appconfig';
 
 export interface ComputerVisionStackProps extends cdk.StackProps {
   vpc?: ec2.IVpc;
-  appConfigApp: appconfig.CfnApplication;
-  appConfigEnv: appconfig.CfnEnvironment;
-  appConfigProfile: appconfig.CfnConfigurationProfile;
-  cameraConfigs: CameraConfig;
   environment: string;
-  userTable: dynamodb.Table;
-  jwtSecret: secretsmanager.Secret;
 }
 
 export class ComputerVisionStack extends cdk.Stack {
@@ -80,59 +71,29 @@ export class ComputerVisionStack extends cdk.Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
-    // Add AppConfig permissions to the EC2 role
+    // Add broad permissions for AppConfig
     role.addToPolicy(new iam.PolicyStatement({
       actions: [
-        'appconfig:GetConfiguration',
-        'appconfig:StartConfigurationSession',
-        'appconfig:GetLatestConfiguration'
+        'appconfig:*'
       ],
-      resources: [
-        `arn:aws:appconfig:${this.region}:${this.account}:application/${props.appConfigApp.ref}/environment/${props.appConfigEnv.ref}/configuration/${props.appConfigProfile.ref}`
-      ]
+      resources: ['*']
     }));
 
-    // Add DynamoDB permissions to the EC2 role
+    // Add broad permissions for DynamoDB
     role.addToPolicy(new iam.PolicyStatement({
       actions: [
-        'dynamodb:PutItem',
-        'dynamodb:GetItem',
-        'dynamodb:Query',
-        'dynamodb:Scan',
-        'dynamodb:UpdateItem',
-        'dynamodb:DeleteItem',
-        'dynamodb:BatchWriteItem'
+        'dynamodb:*'
       ],
-      resources: [detectionsTable.tableArn]
+      resources: ['*']
     }));
 
-    // Add auth permissions to the EC2 role
+    // Add broad permissions for Secrets Manager
     role.addToPolicy(new iam.PolicyStatement({
       actions: [
-        'dynamodb:GetItem',
-        'dynamodb:PutItem',
-        'dynamodb:UpdateItem',
-        'dynamodb:DeleteItem',
-        'dynamodb:Query',
-        'dynamodb:Scan',
+        'secretsmanager:*'
       ],
-      resources: [
-        props.userTable.tableArn,
-        `${props.userTable.tableArn}/index/*`,
-      ],
+      resources: ['*']
     }));
-
-    role.addToPolicy(new iam.PolicyStatement({
-      actions: [
-        'secretsmanager:GetSecretValue',
-      ],
-      resources: [props.jwtSecret.secretArn],
-    }));
-
-    // Get the recommended instance type based on the number of cameras
-    const totalCameras = InstanceTypeUtils.calculateTotalCameras(props.cameraConfigs);
-    const requiredInstanceType = InstanceTypeUtils.getRecommendedInstanceType(props.cameraConfigs);
-    console.log(`Using instance type ${requiredInstanceType} for ${totalCameras} total cameras`);
 
     // Create assets for our application files
     const appFiles = new Asset(this, 'ComputerVisionAppFiles', {
@@ -144,10 +105,10 @@ export class ComputerVisionStack extends cdk.Stack {
       path: path.join(__dirname, '..', 'computer-vision/requirements.txt'),
     });
 
-    // Create the EC2 instance
+    // Create the EC2 instance with a larger instance type since we'll be fetching configs at runtime
     const ec2Instance = new ec2.Instance(this, 'ComputerVisionInstance', {
       vpc,
-      instanceType: InstanceTypeUtils.getEc2InstanceType(props.cameraConfigs),
+      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.MEDIUM),
       machineImage: ec2.MachineImage.latestAmazonLinux2(),
       securityGroup,
       role,

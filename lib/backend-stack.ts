@@ -70,13 +70,9 @@ export class BackendStack extends cdk.Stack {
     // Add AppConfig permissions
     role.addToPolicy(new iam.PolicyStatement({
       actions: [
-        'appconfig:GetConfiguration',
-        'appconfig:StartConfigurationSession',
-        'appconfig:GetLatestConfiguration'
+        'appconfig:*'
       ],
-      resources: [
-        `*`
-      ]
+      resources: ['*']
     }));
 
     // Add DynamoDB permissions

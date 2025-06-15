@@ -11,11 +11,19 @@ import Header from '../Header/Header';
 import Sidebar from '../Sidebar/Sidebar';
 import styles from './Layout.module.css';
 import { LayoutProps } from './types';
+import { useAuthStore } from '@/store/auth';
 
-const Layout: FC<LayoutProps> = ({ children, user }) => {
+const Layout: FC<LayoutProps> = ({ children }) => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const pathname = usePathname();
   const isLoginPage = pathname === '/login/' || pathname === '/login';
+  const user = useAuthStore((state) => state.user);
+
+  // Transform user data to match Header's expected format
+  const headerUser = user ? {
+    name: user.name,
+    avatar: undefined
+  } : undefined;
 
   const navItems = [
     {
@@ -49,7 +57,7 @@ const Layout: FC<LayoutProps> = ({ children, user }) => {
         onToggle={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
       />
       <div className={`${styles.main} ${isSidebarCollapsed ? styles.mainExpanded : ''}`}>
-        <Header user={user} />
+        <Header user={headerUser} />
         <main className={styles.content}>{children}</main>
       </div>
     </div>

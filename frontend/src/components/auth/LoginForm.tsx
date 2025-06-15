@@ -5,6 +5,9 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { useAuthStore } from '@/store/auth';
 import { useRouter } from 'next/navigation';
+import { authApi } from '@/lib/api';
+import { useEffect, useState } from 'react';
+import './login.css';
 
 const schema = yup.object({
   email: yup.string().email('Invalid email').required('Email is required'),
@@ -16,87 +19,106 @@ type LoginFormData = yup.InferType<typeof schema>;
 export default function LoginForm() {
   const router = useRouter();
   const login = useAuthStore((state) => state.login);
+  const [isLoading, setIsLoading] = useState(false);
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
+    setError,
   } = useForm<LoginFormData>({
     resolver: yupResolver(schema),
   });
 
   const onSubmit = async (data: LoginFormData) => {
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
+      setIsLoading(true);
+      console.log('Starting login process...');
+      const response = await authApi.login(data.email, data.password);
+      console.log('Login response:', response);
       
-      const responseData = await response.json();
+      login(
+        {
+          id: response.client_id,
+          email: data.email,
+          name: data.email.split('@')[0],
+        },
+        response.access_token
+      );
       
-      if (!response.ok) {
-        throw new Error(responseData.error || 'Login failed');
-      }
-      
-      login(responseData.user, responseData.token);
+      console.log('Auth state updated, attempting navigation...');
       router.push('/dashboard');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Login error:', error);
+      setError('root', {
+        message: error.response?.data?.message || 'Login failed. Please try again.',
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Sign in to your account
-          </h2>
-        </div>
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit(onSubmit)}>
-          <div className="rounded-md shadow-sm -space-y-px">
-            <div>
-              <label htmlFor="email" className="sr-only">
-                Email address
-              </label>
-              <input
-                {...register('email')}
-                type="email"
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                placeholder="Email address"
-              />
-              {errors.email && (
-                <p className="mt-1 text-sm text-red-600">{errors.email.message}</p>
-              )}
-            </div>
-            <div>
-              <label htmlFor="password" className="sr-only">
-                Password
-              </label>
-              <input
-                {...register('password')}
-                type="password"
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                placeholder="Password"
-              />
-              {errors.password && (
-                <p className="mt-1 text-sm text-red-600">
-                  {errors.password.message}
-                </p>
-              )}
-            </div>
+    <div className="login-container">
+      <div className="login-gradient" />
+      
+      <div className="login-orb login-orb-1" />
+      <div className="login-orb login-orb-2" />
+      <div className="login-orb login-orb-3" />
+
+      <div className="login-card">
+        <div className="login-card-inner">
+          <div className="login-header">
+            <h2 className="login-title">
+              Welcome!
+            </h2>
+            <p className="login-subtitle">Sign in to access your computer vision workspace</p>
           </div>
 
-          <div>
+          <form className="login-form" onSubmit={handleSubmit(onSubmit)}>
+            <div className="login-form-group">
+              <div className="relative">
+                <input
+                  {...register('email')}
+                  type="email"
+                  className="login-input"
+                  placeholder="Email address"
+                />
+                {errors.email && (
+                  <p className="login-error">{errors.email.message}</p>
+                )}
+              </div>
+
+              <div className="relative">
+                <input
+                  {...register('password')}
+                  type="password"
+                  className="login-input"
+                  placeholder="Password"
+                />
+                {errors.password && (
+                  <p className="login-error">{errors.password.message}</p>
+                )}
+              </div>
+            </div>
+
+            {errors.root && (
+              <div className="login-error-container">
+                {errors.root.message}
+              </div>
+            )}
+
             <button
               type="submit"
               disabled={isSubmitting}
-              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="login-button"
             >
-              {isSubmitting ? 'Signing in...' : 'Sign in'}
+              <span className="login-button-text">
+                {isSubmitting ? 'Authenticating...' : 'Sign in'}
+              </span>
+              <div className="login-button-gradient" />
             </button>
-          </div>
-        </form>
+          </form>
+        </div>
       </div>
     </div>
   );

@@ -15,7 +15,7 @@ def get_jwt_secret():
         )
         
         try:
-            secret_name = "dev/jwt-secret"
+            secret_name = "jwt-secret"
             response = client.get_secret_value(SecretId=secret_name)
             secret = response['SecretString']
             _jwt_secret = secret

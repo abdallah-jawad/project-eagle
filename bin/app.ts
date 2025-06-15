@@ -46,15 +46,9 @@ const rtspKvsStack = new RtspKvsStack(app, 'RtspKvsStack', {
   env
 });
 
-// Create the ComputerVisionStack and pass the VPC from RtspKvsStack and auth resources
+// Create the ComputerVisionStack and pass the VPC from RtspKvsStack
 const computerVisionStack = new ComputerVisionStack(app, 'ComputerVisionStack', {
   vpc: rtspKvsStack.vpc,
-  appConfigApp: kvsStack.appConfigApp,
-  appConfigEnv: kvsStack.appConfigEnv,
-  appConfigProfile: kvsStack.appConfigProfile,
-  cameraConfigs: kvsStack.cameraConfigs,
   environment: deploymentConfig.environment,
-  userTable: authStack.userTable,
-  jwtSecret: authStack.jwtSecret,
   env
 });

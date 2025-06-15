@@ -4,28 +4,21 @@ import type { NextRequest } from 'next/server';
 export function middleware(request: NextRequest) {
   console.log('Middleware executing for path:', request.nextUrl.pathname);
   
-  const token = request.cookies.get('auth-storage');
+  const authToken = request.cookies.get('auth-token');
   const isAuthPage = request.nextUrl.pathname === '/login';
   
-  console.log('Auth state:', { 
-    hasToken: !!token, 
-    isAuthPage,
-    path: request.nextUrl.pathname 
-  });
+  const isAuthenticated = !!authToken;
+  console.log('Is authenticated:', isAuthenticated);
 
-  // During development, allow access to dashboard
-  if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'production') { // TODO: remove production
-    console.log('Development mode: allowing access');
-    return NextResponse.next();
-  }
-
-  if (!token && !isAuthPage) {
-    console.log('No token, redirecting to login');
+  // Redirect to login if not authenticated and trying to access protected routes
+  if (!isAuthenticated && !isAuthPage) {
+    console.log('Not authenticated, redirecting to login');
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  if (token && isAuthPage) {
-    console.log('Has token, redirecting to dashboard');
+  // Redirect to dashboard if authenticated and trying to access login page
+  if (isAuthenticated && isAuthPage) {
+    console.log('Already authenticated, redirecting to dashboard');
     return NextResponse.redirect(new URL('/dashboard', request.url));
   }
 
