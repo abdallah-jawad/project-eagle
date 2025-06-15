@@ -23,12 +23,12 @@ export default function Dashboard() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold mb-6">Camera Dashboard</h1>
+      <h1 className="text-2xl font-bold mb-6 text-gray-800">Camera Dashboard</h1>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {cameras.map((camera) => (
           <div key={camera.camera_id} className="bg-white p-6 rounded-lg shadow-lg">
             <div className="flex justify-between items-start mb-4">
-              <h3 className="text-lg font-semibold">{camera.zone}</h3>
+              <h3 className="text-lg font-semibold text-gray-800">{camera.zone}</h3>
               <span className={`px-2 py-1 rounded text-sm ${
                 camera.status === 'active' ? 'bg-green-100 text-green-800' :
                 camera.status === 'inactive' ? 'bg-gray-100 text-gray-800' :
@@ -70,4 +70,4 @@ export default function Dashboard() {
       </div>
     </div>
   );
-} 
+}

@@ -18,7 +18,7 @@ export const useCameraConfigurations = () => {
       hasFetched.current = false;
       clearCameras();
     }
-  }, [user?.id]); // Only depend on user.id
+  }, [user?.id, fetchCameras, clearCameras]);
 
   return {
     cameras,

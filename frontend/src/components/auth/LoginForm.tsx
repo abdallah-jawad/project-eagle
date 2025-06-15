@@ -6,7 +6,6 @@ import * as yup from 'yup';
 import { useAuthStore } from '@/store/auth';
 import { useRouter } from 'next/navigation';
 import { authApi } from '@/lib/api';
-import { useEffect, useState } from 'react';
 import './login.css';
 
 const schema = yup.object({
@@ -19,7 +18,6 @@ type LoginFormData = yup.InferType<typeof schema>;
 export default function LoginForm() {
   const router = useRouter();
   const login = useAuthStore((state) => state.login);
-  const [isLoading, setIsLoading] = useState(false);
   const {
     register,
     handleSubmit,
@@ -31,7 +29,6 @@ export default function LoginForm() {
 
   const onSubmit = async (data: LoginFormData) => {
     try {
-      setIsLoading(true);
       console.log('Starting login process...');
       const response = await authApi.login(data.email, data.password);
       console.log('Login response:', response);
@@ -47,13 +44,12 @@ export default function LoginForm() {
       
       console.log('Auth state updated, attempting navigation...');
       router.push('/dashboard');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Login error:', error);
+      const errorMessage = 'Login failed. Please try again.';
       setError('root', {
-        message: error.response?.data?.message || 'Login failed. Please try again.',
+        message: errorMessage,
       });
-    } finally {
-      setIsLoading(false);
     }
   };
 
