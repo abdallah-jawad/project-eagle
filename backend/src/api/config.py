@@ -4,7 +4,7 @@ Global configuration settings for the application.
 import os
 
 # AWS Configuration
-AWS_REGION = os.getenv('AWS_REGION', 'us-east-1')
+AWS_REGION = 'us-east-1'
 
 # API Configuration
 API_PREFIX = '/api'
@@ -16,4 +16,13 @@ JWT_ALGORITHM = 'HS256'
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 # Database Configuration
-DYNAMODB_TABLE_NAME = 'users' 
+DYNAMODB_TABLE_NAME = 'users'
+
+# CORS Configuration
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",  # Local development
+    "http://localhost:5173",  # Vite default port
+    "http://3.93.248.72",     # EC2 instance
+    "http://3.93.248.72:3000",
+    "https://main.d281rb2pltkmas.amplifyapp.com"  # Amplify frontend
+] 
