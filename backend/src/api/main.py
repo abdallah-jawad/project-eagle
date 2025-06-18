@@ -34,3 +34,7 @@ app.include_router(cameras.router, prefix="/api/v1", tags=["Cameras"])
 # Import and include routers
 from .routes import auth
 app.include_router(auth.router, prefix="/api/v1", tags=["Authentication"])
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="127.0.0.1", port=8080)

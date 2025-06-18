@@ -1,0 +1,13 @@
+[Unit]
+Description=Backend API Service
+After=network.target
+
+[Service]
+User=ec2-user
+WorkingDirectory=/opt/backend
+Environment="PATH=/usr/local/bin"
+ExecStart=/usr/local/bin/uvicorn api.main:app --host 127.0.0.1 --port 8080
+Restart=always
+
+[Install]
+WantedBy=multi-user.target 

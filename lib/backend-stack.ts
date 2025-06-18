@@ -2,6 +2,7 @@ import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as route53 from 'aws-cdk-lib/aws-route53';
 import { DeploymentStack } from './deployment-stack';
 import { deploymentConfig } from '../config/deployment-config';
 
@@ -20,25 +21,25 @@ export class BackendStack extends cdk.Stack {
       natGateways: 1, 
     });
 
-    // Create security group
+    // Create security group for EC2
     const securityGroup = new ec2.SecurityGroup(this, 'BackendSecurityGroup', {
       vpc,
       description: 'Security group for backend API',
       allowAllOutbound: true,
     });
 
-    // Allow inbound HTTP traffic
+    // Allow inbound HTTPS traffic
+    securityGroup.addIngressRule(
+      ec2.Peer.anyIpv4(),
+      ec2.Port.tcp(443),
+      'Allow HTTPS traffic'
+    );
+
+    // Allow inbound HTTP traffic (for Let's Encrypt validation)
     securityGroup.addIngressRule(
       ec2.Peer.anyIpv4(),
       ec2.Port.tcp(80),
       'Allow HTTP traffic'
-    );
-
-    // Allow inbound traffic on port 8080
-    securityGroup.addIngressRule(
-      ec2.Peer.anyIpv4(),
-      ec2.Port.tcp(8080),
-      'Allow traffic on port 8080'
     );
 
     // Allow SSH from EC2 Instance Connect service
@@ -57,15 +58,14 @@ export class BackendStack extends cdk.Stack {
       ],
     });
 
-      // Add EC2 Instance Connect permissions
-      role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'));
-      role.addToPolicy(new iam.PolicyStatement({
-        actions: [
-          'ec2-instance-connect:SendSSHPublicKey'
-        ],
-        resources: ['*']
-      }));
-  
+    // Add EC2 Instance Connect permissions
+    role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'));
+    role.addToPolicy(new iam.PolicyStatement({
+      actions: [
+        'ec2-instance-connect:SendSSHPublicKey'
+      ],
+      resources: ['*']
+    }));
 
     // Add AppConfig permissions
     role.addToPolicy(new iam.PolicyStatement({
@@ -113,19 +113,6 @@ export class BackendStack extends cdk.Stack {
       resources: ['*']
     }));
 
-    role.addToPolicy(new iam.PolicyStatement({
-      actions: [
-        's3:GetObject',
-        's3:GetObjectVersion',
-        's3:ListBucket',
-        's3:ListAllMyBuckets'
-      ],
-      resources: [
-        'arn:aws:s3:::*',
-        'arn:aws:s3:::*/*'
-      ]
-    }));
-
     // Create EC2 instance
     const instance = new ec2.Instance(this, 'BackendInstance', {
       vpc,
@@ -139,24 +126,32 @@ export class BackendStack extends cdk.Stack {
       userData: ec2.UserData.forLinux(),
     });
 
+    // Get the hosted zone
+    const hostedZone = route53.HostedZone.fromLookup(this, 'HostedZone', {
+      domainName: 'neelo.vision',
+    });
+
+    // Create DNS record
+    new route53.ARecord(this, 'BackendAliasRecord', {
+      zone: hostedZone,
+      target: route53.RecordTarget.fromIpAddresses(instance.instancePublicIp),
+      recordName: 'api.neelo.vision',
+    });
+
     // Add tags to the instance
     cdk.Tags.of(instance).add('Name', 'BackendInstance');
     cdk.Tags.of(instance).add('Environment', 'production');
     cdk.Tags.of(instance).add('Stack', 'backend');
 
-    // Add improved user data script with better logging
+    // Create application directory and setup Nginx
     instance.userData.addCommands(
       '#!/bin/bash',
       '# UserData Version: 1.0',
       'exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1',
-      'echo "User data script started execution."'
-    );
-
-    // Update system and install required packages
-    instance.userData.addCommands(
+      'echo "User data script started execution."',
       'echo "Updating system and installing required packages..." >> /var/log/user-data.log',
       'yum update -y >> /var/log/user-data.log 2>&1',
-      'yum install -y ruby wget unzip aws-cli openssl >> /var/log/user-data.log 2>&1',
+      'yum install -y ruby wget unzip aws-cli openssl nginx certbot python3-certbot-nginx >> /var/log/user-data.log 2>&1',
       'echo "Installing Python 3.8..." >> /var/log/user-data.log',
       'amazon-linux-extras enable python3.8 >> /var/log/user-data.log 2>&1',
       'yum clean metadata >> /var/log/user-data.log 2>&1',
@@ -164,32 +159,14 @@ export class BackendStack extends cdk.Stack {
       'alternatives --install /usr/bin/python python /usr/bin/python3.8 1 >> /var/log/user-data.log 2>&1',
       'alternatives --set python /usr/bin/python3.8 >> /var/log/user-data.log 2>&1',
       'echo "Python 3.8 installed and configured as default." >> /var/log/user-data.log',
-      'echo "System updated and required packages installed." >> /var/log/user-data.log'
-    );
-
-    // Generate SSL certificates
-    instance.userData.addCommands(
-      'echo "Generating SSL certificates..." >> /var/log/user-data.log',
-      'mkdir -p /etc/ssl/private >> /var/log/user-data.log 2>&1',
-      'openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/ssl/private/server.key -out /etc/ssl/private/server.crt -subj "/CN=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)" >> /var/log/user-data.log 2>&1',
-      'chmod 600 /etc/ssl/private/server.key >> /var/log/user-data.log 2>&1',
-      'chmod 644 /etc/ssl/private/server.crt >> /var/log/user-data.log 2>&1',
-      'echo "SSL certificates generated." >> /var/log/user-data.log'
-    );
-
-    // Install and configure CodeDeploy agent
-    instance.userData.addCommands(
+      'echo "System updated and required packages installed." >> /var/log/user-data.log',
       'echo "Installing CodeDeploy agent..." >> /var/log/user-data.log',
       'REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region) >> /var/log/user-data.log 2>&1',
       'wget https://aws-codedeploy-${REGION}.s3.amazonaws.com/latest/install >> /var/log/user-data.log 2>&1',
       'chmod +x ./install >> /var/log/user-data.log 2>&1',
       './install auto >> /var/log/user-data.log 2>&1',
       'service codedeploy-agent start >> /var/log/user-data.log 2>&1',
-      'echo "CodeDeploy agent installed and started." >> /var/log/user-data.log'
-    );
-
-    // Create application directory
-    instance.userData.addCommands(
+      'echo "CodeDeploy agent installed and started." >> /var/log/user-data.log',
       'echo "Creating application directory..." >> /var/log/user-data.log',
       'mkdir -p /opt/backend >> /var/log/user-data.log 2>&1',
       'chown -R ec2-user:ec2-user /opt/backend >> /var/log/user-data.log 2>&1',
@@ -206,7 +183,7 @@ export class BackendStack extends cdk.Stack {
     });
 
     // Store the API endpoint
-    this.apiEndpoint = `http://${instance.instancePublicIp}`;
+    this.apiEndpoint = `https://api.neelo.vision`;
 
     // Output the API endpoint
     new cdk.CfnOutput(this, 'ApiEndpoint', {

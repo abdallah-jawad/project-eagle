@@ -22,7 +22,6 @@ DYNAMODB_TABLE_NAME = 'users'
 ALLOWED_ORIGINS = [
     "http://localhost:3000",  # Local development
     "http://localhost:5173",  # Vite default port
-    "http://3.93.248.72",     # EC2 instance
-    "http://3.93.248.72:3000",
-    "https://main.d281rb2pltkmas.amplifyapp.com"  # Amplify frontend
+    "https://api.neelo.vision",  # Production API
+    "https://neelo.vision",     # Production frontend
 ] 
