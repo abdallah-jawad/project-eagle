@@ -143,41 +143,60 @@ export class BackendStack extends cdk.Stack {
     cdk.Tags.of(instance).add('Environment', 'production');
     cdk.Tags.of(instance).add('Stack', 'backend');
 
-    // Create application directory and setup Nginx
+    // User data script entry point
     instance.userData.addCommands(
       '#!/bin/bash',
-      '# UserData Version: 2.0 - Fixed Nginx, Certbot, and CodeDeploy installation',
+      '# UserData Version: 1.0',
       'exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1',
-      'echo "User data script started execution."',
+      'echo "User data script started execution."'
+    );
+
+    // Update system and install required packages
+    instance.userData.addCommands(
       'echo "Updating system and installing required packages..." >> /var/log/user-data.log',
       'yum update -y >> /var/log/user-data.log 2>&1',
-      'yum install -y ruby wget unzip aws-cli openssl >> /var/log/user-data.log 2>&1',
-      'echo "Installing Nginx from Amazon Linux Extras..." >> /var/log/user-data.log',
+      'yum install -y ruby wget unzip aws-cli >> /var/log/user-data.log 2>&1',
+      'echo "Installing Python 3.8..." >> /var/log/user-data.log',
+      'amazon-linux-extras enable python3.8 >> /var/log/user-data.log 2>&1',
+      'yum clean metadata >> /var/log/user-data.log 2>&1',
+      'yum install -y python38 python38-pip python38-devel >> /var/log/user-data.log 2>&1',
+      'echo "Python 3.8 installed. Using python3.8 explicitly." >> /var/log/user-data.log',
+      'echo "System updated and required packages installed." >> /var/log/user-data.log'
+    );
+    
+    // Install Nginx
+    instance.userData.addCommands(
+      'echo "Installing Nginx..." >> /var/log/user-data.log',
       'amazon-linux-extras install -y nginx1 >> /var/log/user-data.log 2>&1',
+      'echo "Nginx installed." >> /var/log/user-data.log'
+    );
+
+    // Install Certbot
+    instance.userData.addCommands(
       'echo "Installing Certbot..." >> /var/log/user-data.log',
       'yum install -y certbot python3-certbot-nginx >> /var/log/user-data.log 2>&1',
-      'echo "Installing Python 3.9 (more recent than 3.8)..." >> /var/log/user-data.log',
-      'amazon-linux-extras enable python3.9 >> /var/log/user-data.log 2>&1',
-      'yum clean metadata >> /var/log/user-data.log 2>&1',
-      'yum install -y python39 python39-pip python39-devel >> /var/log/user-data.log 2>&1',
-      'alternatives --install /usr/bin/python python /usr/bin/python3.9 1 >> /var/log/user-data.log 2>&1',
-      'alternatives --set python /usr/bin/python3.9 >> /var/log/user-data.log 2>&1',
-      'echo "Python 3.9 installed and configured as default." >> /var/log/user-data.log',
-      'echo "System updated and required packages installed." >> /var/log/user-data.log',
+      'echo "Certbot installed." >> /var/log/user-data.log'
+    );
+    
+    // Install and configure CodeDeploy agent
+    instance.userData.addCommands(
       'echo "Installing CodeDeploy agent..." >> /var/log/user-data.log',
       'REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region) >> /var/log/user-data.log 2>&1',
       'wget https://aws-codedeploy-${REGION}.s3.amazonaws.com/latest/install >> /var/log/user-data.log 2>&1',
       'chmod +x ./install >> /var/log/user-data.log 2>&1',
       './install auto >> /var/log/user-data.log 2>&1',
-      'systemctl enable codedeploy-agent >> /var/log/user-data.log 2>&1',
-      'systemctl start codedeploy-agent >> /var/log/user-data.log 2>&1',
-      'echo "CodeDeploy agent installed and started." >> /var/log/user-data.log',
+      'service codedeploy-agent start >> /var/log/user-data.log 2>&1',
+      'echo "CodeDeploy agent installed and started." >> /var/log/user-data.log'
+    );
+
+    // Create application directory
+    instance.userData.addCommands(
       'echo "Creating application directory..." >> /var/log/user-data.log',
       'mkdir -p /opt/backend >> /var/log/user-data.log 2>&1',
       'chown -R ec2-user:ec2-user /opt/backend >> /var/log/user-data.log 2>&1',
-      'echo "Application directory created." >> /var/log/user-data.log',
-      'echo "User data script completed successfully." >> /var/log/user-data.log'
+      'echo "Application directory created." >> /var/log/user-data.log'
     );
+
 
     // Create deployment stack
     new DeploymentStack(this, 'BackendDeploymentStack', {
