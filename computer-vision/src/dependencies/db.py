@@ -6,6 +6,10 @@ from threading import Thread, Lock
 import queue
 import json
 from datetime import datetime
+from models.location import Location
+from models.fixture import Fixture
+from models.planogram import Planogram
+from models.camera import Camera
 
 class DynamoDBClient:
     """Client for interacting with DynamoDB to store detection records"""
@@ -105,3 +109,102 @@ class DynamoDBClient:
             remaining_items.append(self.write_queue.get())
         if remaining_items:
             self._write_batch(remaining_items)
+
+    def fetch_clients_for_feature(self, feature_name: str):
+        # Fetch clients enrolled in a specific feature
+        response = self.table.query(
+            IndexName='feature_enrollment_index',
+            KeyConditionExpression='SK = :feature',
+            ExpressionAttributeValues={
+                ':feature': f'FEATURE#{feature_name}'
+            }
+        )
+        return response.get('Items', [])
+
+    def fetch_client_data_for_planogram_vision(self, client_id: str):
+        # Fetch locations for the client
+        locations_response = self.table.query(
+            KeyConditionExpression='PK = :client AND begins_with(SK, :location)',
+            ExpressionAttributeValues={
+                ':client': f'CLIENT#{client_id}',
+                ':location': 'LOCATION#'
+            }
+        )
+        locations = locations_response.get('Items', [])
+
+        # Fetch fixtures, planograms, and cameras for each location
+        for location in locations:
+            fixtures_response = self.table.query(
+                KeyConditionExpression='PK = :location AND begins_with(SK, :fixture)',
+                ExpressionAttributeValues={
+                    ':location': f'LOCATION#{location['location_id']}',
+                    ':fixture': 'FIXTURE#'
+                }
+            )
+            location['fixtures'] = fixtures_response.get('Items', [])
+
+            for fixture in location['fixtures']:
+                # Fetch planograms
+                planograms_response = self.table.query(
+                    KeyConditionExpression='PK = :fixture AND begins_with(SK, :planogram)',
+                    ExpressionAttributeValues={
+                        ':fixture': f'FIXTURE#{fixture['fixture_id']}',
+                        ':planogram': 'PLANOGRAM#'
+                    }
+                )
+                fixture['planograms'] = planograms_response.get('Items', [])
+
+                # Fetch cameras
+                cameras_response = self.table.query(
+                    KeyConditionExpression='PK = :fixture AND begins_with(SK, :camera)',
+                    ExpressionAttributeValues={
+                        ':fixture': f'FIXTURE#{fixture['fixture_id']}',
+                        ':camera': 'CAMERA#'
+                    }
+                )
+                fixture['cameras'] = cameras_response.get('Items', [])
+
+        # Convert raw data to structured models
+        structured_locations = []
+        for loc in locations:
+            location_obj = Location(
+                client_id=client_id,
+                location_id=loc['location_id'],
+                location_name=loc['location_name'],
+                address=loc['address'],
+                timezone=loc['timezone'],
+                fixtures=[
+                    Fixture(
+                        location_id=loc['location_id'],
+                        fixture_id=fix['fixture_id'],
+                        fixture_name=fix['fixture_name'],
+                        fixture_type=fix['fixture_type'],
+                        position=fix['position'],
+                        dimensions=fix['dimensions'],
+                        planograms=[
+                            Planogram(
+                                fixture_id=fix['fixture_id'],
+                                planogram_id=plan['planogram_id'],
+                                planogram_name=plan['planogram_name'],
+                                version=plan['version'],
+                                layout_data=plan['layout_data'],
+                                products=plan['products']
+                            ) for plan in fix['planograms']
+                        ],
+                        cameras=[
+                            Camera(
+                                fixture_id=fix['fixture_id'],
+                                camera_id=cam['camera_id'],
+                                camera_name=cam['camera_name'],
+                                stream_url=cam['stream_url'],
+                                resolution=cam['resolution'],
+                                fps=cam['fps'],
+                                status=cam['status']
+                            ) for cam in fix['cameras']
+                        ]
+                    ) for fix in loc['fixtures']
+                ]
+            )
+            structured_locations.append(location_obj)
+
+        return structured_locations
