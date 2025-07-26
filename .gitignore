@@ -58,6 +58,7 @@ env/
 venv/
 .env/
 .venv/
+planogram_env/
 *.egg-info/
 .installed.cfg
 *.egg

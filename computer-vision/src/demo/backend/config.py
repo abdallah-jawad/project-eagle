@@ -1,0 +1,228 @@
+import json
+import os
+from typing import Dict, List, Optional
+from .models import PlanogramSection, BoundingBox
+
+class PlanogramConfig:
+    """Manages planogram configurations and settings"""
+    
+    def __init__(self, config_path: Optional[str] = None):
+        self.config_path = config_path
+        self.sections: List[PlanogramSection] = []
+        self.planogram_image_path: Optional[str] = None
+        self.metadata: Dict = {}
+        
+        if config_path:
+            self.load_from_file(config_path)
+    
+    def load_from_file(self, config_path: str) -> None:
+        """Load configuration from JSON file"""
+        try:
+            with open(config_path, 'r') as f:
+                config_data = json.load(f)
+            
+            self.config_path = config_path
+            self._parse_config(config_data)
+            
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Configuration file not found: {config_path}")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in configuration file: {e}")
+    
+    def _parse_config(self, config_data: Dict) -> None:
+        """Parse configuration data and create sections"""
+        self.sections = []
+        self.metadata = config_data.get('metadata', {})
+        self.planogram_image_path = config_data.get('planogram_image_path')
+        
+        for section_data in config_data.get('sections', []):
+            position_data = section_data['position']
+            bbox = BoundingBox(
+                x1=position_data['x1'],
+                y1=position_data['y1'],
+                x2=position_data['x2'],
+                y2=position_data['y2']
+            )
+            
+            section = PlanogramSection(
+                section_id=section_data['section_id'],
+                name=section_data['name'],
+                expected_items=section_data['expected_items'],
+                expected_count=section_data['expected_count'],
+                position=bbox,
+                priority=section_data.get('priority', 'Medium')
+            )
+            
+            self.sections.append(section)
+    
+    def save_to_file(self, config_path: str) -> None:
+        """Save current configuration to JSON file"""
+        config_data = {
+            'metadata': self.metadata,
+            'planogram_image_path': self.planogram_image_path,
+            'sections': [section.to_dict() for section in self.sections]
+        }
+        
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(config_path), exist_ok=True)
+        
+        with open(config_path, 'w') as f:
+            json.dump(config_data, f, indent=2)
+        
+        self.config_path = config_path
+    
+    def add_section(self, section: PlanogramSection) -> None:
+        """Add a new section to the configuration"""
+        # Check for duplicate section IDs
+        existing_ids = [s.section_id for s in self.sections]
+        if section.section_id in existing_ids:
+            raise ValueError(f"Section ID '{section.section_id}' already exists")
+        
+        self.sections.append(section)
+    
+    def remove_section(self, section_id: str) -> bool:
+        """Remove a section by ID. Returns True if removed, False if not found"""
+        original_count = len(self.sections)
+        self.sections = [s for s in self.sections if s.section_id != section_id]
+        return len(self.sections) < original_count
+    
+    def get_section_by_id(self, section_id: str) -> Optional[PlanogramSection]:
+        """Get a section by its ID"""
+        for section in self.sections:
+            if section.section_id == section_id:
+                return section
+        return None
+    
+    def get_sections_for_item(self, item_class: str) -> List[PlanogramSection]:
+        """Get all sections that should contain a specific item class"""
+        return [
+            section for section in self.sections 
+            if item_class in section.expected_items
+        ]
+    
+    def find_section_by_position(self, x: float, y: float) -> Optional[PlanogramSection]:
+        """Find which section a given coordinate belongs to"""
+        for section in self.sections:
+            bbox = section.position
+            if bbox.x1 <= x <= bbox.x2 and bbox.y1 <= y <= bbox.y2:
+                return section
+        return None
+    
+    @classmethod
+    def create_sample_config(cls) -> 'PlanogramConfig':
+        """Create a sample configuration for testing"""
+        config = cls()
+        
+        # Sample metadata
+        config.metadata = {
+            'name': 'Sample Grocery Store Layout',
+            'store_id': 'STORE_001',
+            'created_date': '2024-01-01',
+            'version': '1.0'
+        }
+        
+        # Sample sections
+        sections_data = [
+            {
+                'section_id': 'CEREALS_TOP',
+                'name': 'Cereals - Top Shelf',
+                'expected_items': ['cereal_box', 'granola'],
+                'expected_count': 8,
+                'position': BoundingBox(0, 0, 300, 100),
+                'priority': 'Medium'
+            },
+            {
+                'section_id': 'CEREALS_MIDDLE',
+                'name': 'Cereals - Middle Shelf',
+                'expected_items': ['cereal_box'],
+                'expected_count': 12,
+                'position': BoundingBox(0, 100, 300, 200),
+                'priority': 'High'
+            },
+            {
+                'section_id': 'SNACKS_TOP',
+                'name': 'Snacks - Top Shelf',
+                'expected_items': ['chips', 'cookies'],
+                'expected_count': 6,
+                'position': BoundingBox(300, 0, 600, 100),
+                'priority': 'Low'
+            },
+            {
+                'section_id': 'BEVERAGES',
+                'name': 'Beverages Section',
+                'expected_items': ['bottle', 'can'],
+                'expected_count': 15,
+                'position': BoundingBox(300, 100, 600, 200),
+                'priority': 'High'
+            }
+        ]
+        
+        for section_data in sections_data:
+            section = PlanogramSection(
+                section_id=section_data['section_id'],
+                name=section_data['name'],
+                expected_items=section_data['expected_items'],
+                expected_count=section_data['expected_count'],
+                position=section_data['position'],
+                priority=section_data['priority']
+            )
+            config.add_section(section)
+        
+        return config
+    
+    @staticmethod
+    def list_available_configs(config_dir: str = "config/planograms") -> List[str]:
+        """List all available configuration files"""
+        if not os.path.exists(config_dir):
+            return []
+        
+        config_files = []
+        for filename in os.listdir(config_dir):
+            if filename.endswith('.json'):
+                config_files.append(filename)
+        
+        return sorted(config_files)
+    
+    @staticmethod
+    def get_config_path(config_name: str, config_dir: str = "config/planograms") -> str:
+        """Get full path for a configuration file"""
+        if not config_name.endswith('.json'):
+            config_name += '.json'
+        return os.path.join(config_dir, config_name)
+    
+    def validate_configuration(self) -> List[str]:
+        """Validate the current configuration and return list of issues"""
+        issues = []
+        
+        if not self.sections:
+            issues.append("No sections defined in configuration")
+        
+        section_ids = set()
+        for section in self.sections:
+            # Check for duplicate IDs
+            if section.section_id in section_ids:
+                issues.append(f"Duplicate section ID: {section.section_id}")
+            section_ids.add(section.section_id)
+            
+            # Check for empty expected items
+            if not section.expected_items:
+                issues.append(f"Section '{section.section_id}' has no expected items")
+            
+            # Check for invalid expected count
+            if section.expected_count <= 0:
+                issues.append(f"Section '{section.section_id}' has invalid expected count: {section.expected_count}")
+            
+            # Check for invalid bounding box
+            bbox = section.position
+            if bbox.x1 >= bbox.x2 or bbox.y1 >= bbox.y2:
+                issues.append(f"Section '{section.section_id}' has invalid bounding box")
+        
+        return issues
+    
+    def to_dict(self) -> Dict:
+        """Convert configuration to dictionary"""
+        return {
+            'metadata': self.metadata,
+            'planogram_image_path': self.planogram_image_path,
+            'sections': [section.to_dict() for section in self.sections]
+        } 

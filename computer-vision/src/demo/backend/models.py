@@ -1,0 +1,221 @@
+from dataclasses import dataclass
+from typing import List, Dict, Any, Optional, Tuple
+import pandas as pd
+from PIL import Image
+import numpy as np
+
+@dataclass
+class BoundingBox:
+    """Represents a bounding box for detected objects"""
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    
+    @property
+    def center(self) -> Tuple[float, float]:
+        """Get the center point of the bounding box"""
+        return ((self.x1 + self.x2) / 2, (self.y1 + self.y2) / 2)
+    
+    @property
+    def area(self) -> float:
+        """Calculate the area of the bounding box"""
+        return (self.x2 - self.x1) * (self.y2 - self.y1)
+    
+    def iou(self, other: 'BoundingBox') -> float:
+        """Calculate Intersection over Union with another bounding box"""
+        # Calculate intersection
+        x1_inter = max(self.x1, other.x1)
+        y1_inter = max(self.y1, other.y1)
+        x2_inter = min(self.x2, other.x2)
+        y2_inter = min(self.y2, other.y2)
+        
+        if x1_inter < x2_inter and y1_inter < y2_inter:
+            intersection = (x2_inter - x1_inter) * (y2_inter - y1_inter)
+        else:
+            intersection = 0.0
+        
+        # Calculate union
+        union = self.area + other.area - intersection
+        
+        return intersection / union if union > 0 else 0.0
+
+@dataclass
+class DetectedItem:
+    """Represents a detected item from YOLO model"""
+    class_id: int
+    class_name: str
+    confidence: float
+    bbox: BoundingBox
+    section_id: Optional[str] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for DataFrame creation"""
+        return {
+            'class_id': self.class_id,
+            'class_name': self.class_name,
+            'confidence': self.confidence,
+            'x1': self.bbox.x1,
+            'y1': self.bbox.y1,
+            'x2': self.bbox.x2,
+            'y2': self.bbox.y2,
+            'center_x': self.bbox.center[0],
+            'center_y': self.bbox.center[1],
+            'section_id': self.section_id
+        }
+
+@dataclass
+class PlanogramSection:
+    """Represents a section in the planogram"""
+    section_id: str
+    name: str
+    expected_items: List[str]  # List of expected class names
+    expected_count: int
+    position: BoundingBox  # Expected position on shelf
+    priority: str = "Medium"  # High, Medium, Low
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for configuration"""
+        return {
+            'section_id': self.section_id,
+            'name': self.name,
+            'expected_items': self.expected_items,
+            'expected_count': self.expected_count,
+            'position': {
+                'x1': self.position.x1,
+                'y1': self.position.y1,
+                'x2': self.position.x2,
+                'y2': self.position.y2
+            },
+            'priority': self.priority
+        }
+
+@dataclass
+class MisplacedItem:
+    """Represents an item that is not in its correct section"""
+    detected_item: DetectedItem
+    expected_section: str
+    actual_section: Optional[str]
+    distance_from_expected: float
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for DataFrame creation"""
+        return {
+            'item_class': self.detected_item.class_name,
+            'confidence': self.detected_item.confidence,
+            'expected_section': self.expected_section,
+            'actual_section': self.actual_section or 'Unknown',
+            'distance_from_expected': round(self.distance_from_expected, 2),
+            'center_x': self.detected_item.bbox.center[0],
+            'center_y': self.detected_item.bbox.center[1]
+        }
+
+@dataclass
+class InventoryStatus:
+    """Represents inventory status for a section"""
+    section_id: str
+    section_name: str
+    expected_count: int
+    detected_count: int
+    status: str  # "In Stock", "Low Stock", "Out of Stock", "Overstock"
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for DataFrame creation"""
+        return {
+            'section_id': self.section_id,
+            'section_name': self.section_name,
+            'expected_count': self.expected_count,
+            'detected_count': self.detected_count,
+            'difference': self.detected_count - self.expected_count,
+            'status': self.status
+        }
+
+@dataclass
+class Task:
+    """Represents a task that needs to be completed"""
+    task_id: str
+    description: str
+    section_id: str
+    priority: str  # High, Medium, Low
+    task_type: str  # "Restock", "Remove", "Relocate", "Check"
+    estimated_time: int  # in minutes
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for DataFrame creation"""
+        return {
+            'task_id': self.task_id,
+            'description': self.description,
+            'section_id': self.section_id,
+            'priority': self.priority,
+            'task_type': self.task_type,
+            'estimated_time': self.estimated_time
+        }
+
+@dataclass
+class AnalysisResults:
+    """Contains all results from planogram analysis"""
+    detected_items: pd.DataFrame
+    misplaced_items: pd.DataFrame
+    inventory_status: pd.DataFrame
+    tasks: pd.DataFrame
+    annotated_image: Optional[Image.Image]
+    
+    @classmethod
+    def create_empty(cls) -> 'AnalysisResults':
+        """Create empty results structure"""
+        return cls(
+            detected_items=pd.DataFrame(),
+            misplaced_items=pd.DataFrame(),
+            inventory_status=pd.DataFrame(),
+            tasks=pd.DataFrame(),
+            annotated_image=None
+        )
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization"""
+        return {
+            'detected_items': self.detected_items,
+            'misplaced_items': self.misplaced_items,
+            'inventory_status': self.inventory_status,
+            'tasks': self.tasks,
+            'annotated_image': self.annotated_image
+        }
+
+class PlanogramMetrics:
+    """Utility class for calculating planogram metrics"""
+    
+    @staticmethod
+    def calculate_compliance_score(
+        expected_sections: List[PlanogramSection],
+        detected_items: List[DetectedItem],
+        misplaced_items: List[MisplacedItem]
+    ) -> float:
+        """Calculate overall compliance score (0-100)"""
+        if not expected_sections:
+            return 0.0
+        
+        total_expected = sum(section.expected_count for section in expected_sections)
+        total_detected = len(detected_items)
+        total_misplaced = len(misplaced_items)
+        
+        if total_expected == 0:
+            return 100.0 if total_detected == 0 else 0.0
+        
+        # Score based on correct placement and inventory accuracy
+        placement_score = max(0, (total_detected - total_misplaced) / total_detected * 100) if total_detected > 0 else 0
+        inventory_score = min(100, total_detected / total_expected * 100)
+        
+        # Weighted average
+        return (placement_score * 0.6 + inventory_score * 0.4)
+    
+    @staticmethod
+    def determine_inventory_status(expected: int, detected: int) -> str:
+        """Determine inventory status based on expected vs detected counts"""
+        if detected == 0:
+            return "Out of Stock"
+        elif detected < expected * 0.5:
+            return "Low Stock"
+        elif detected > expected * 1.2:
+            return "Overstock"
+        else:
+            return "In Stock" 
