@@ -51,8 +51,51 @@ class DetectedItem:
     mask: Optional[np.ndarray] = None  # Binary segmentation mask
     mask_polygon: Optional[List[List[float]]] = None  # Polygon coordinates
     
+    @property
+    def center(self) -> Tuple[float, float]:
+        """
+        Get the center point of the detected item.
+        Uses polygon centroid if available, otherwise falls back to bounding box center.
+        
+        Returns:
+            Tuple of (center_x, center_y) coordinates
+        """
+        # Use polygon centroid if available and valid
+        if self.mask_polygon and len(self.mask_polygon) >= 3:
+            return self._calculate_polygon_centroid()
+        else:
+            # Fall back to bounding box center
+            return self.bbox.center
+    
+    def _calculate_polygon_centroid(self) -> Tuple[float, float]:
+        """
+        Calculate the centroid (center point) of the mask polygon
+        
+        Returns:
+            Tuple of (center_x, center_y) coordinates
+        """
+        if not self.mask_polygon or len(self.mask_polygon) < 3:
+            return self.bbox.center
+        
+        # Calculate centroid using arithmetic mean of all points
+        total_x = 0.0
+        total_y = 0.0
+        
+        for point in self.mask_polygon:
+            if len(point) >= 2:
+                total_x += point[0]
+                total_y += point[1]
+        
+        num_points = len(self.mask_polygon)
+        centroid_x = total_x / num_points
+        centroid_y = total_y / num_points
+        
+        return centroid_x, centroid_y
+    
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for DataFrame creation"""
+        center_x, center_y = self.center  # Use the smart center calculation
+        
         result = {
             'class_id': self.class_id,
             'class_name': self.class_name,
@@ -61,8 +104,8 @@ class DetectedItem:
             'y1': self.bbox.y1,
             'x2': self.bbox.x2,
             'y2': self.bbox.y2,
-            'center_x': self.bbox.center[0],
-            'center_y': self.bbox.center[1],
+            'center_x': center_x,
+            'center_y': center_y,
             'section_id': self.section_id,
             'has_mask': self.mask is not None,
             'mask_area': self.calculate_mask_area() if self.mask is not None else 0.0,

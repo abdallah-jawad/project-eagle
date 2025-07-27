@@ -12,6 +12,7 @@ from .models import (
 )
 from .config import PlanogramConfig
 from .inference import ModelInference
+from .coordinate_system import CoordinateSystem
 
 class PlanogramAnalyzer:
     """Main class for analyzing planogram images and detecting compliance issues"""
@@ -111,33 +112,39 @@ class PlanogramAnalyzer:
             print("⚠️ Inference layer not ready, returning empty results")
             return detected_items
         
-        # Run inference
+        # Run inference - YOLO returns coordinates in original image space
         detections = self.inference_layer.infer(image, confidence_threshold, iou_threshold)
         
+        # Normalize detection coordinates to reference system
+        normalized_detections = CoordinateSystem.normalize_detection_coordinates(detections, image)
+        
         # Convert detection dictionaries to DetectedItem objects
-        for detection in detections:
-            bbox = BoundingBox(*detection['bbox'])
+        for detection in normalized_detections:
+            bbox = BoundingBox(*detection['bbox'])  # Now in reference coordinates
             item = DetectedItem(
                 class_id=detection['class_id'],
                 class_name=detection['class_name'],
                 confidence=detection['confidence'],
-                bbox=bbox,
+                bbox=bbox,  # Reference coordinates
                 mask=detection.get('mask'),
-                mask_polygon=detection.get('mask_polygon', [])
+                mask_polygon=detection.get('mask_polygon', [])  # Also normalized
             )
             detected_items.append(item)
         
         return detected_items
     
     def _assign_items_to_sections(self, detected_items: List[DetectedItem]) -> None:
-        """Assign detected items to their corresponding planogram sections"""
+        """Assign detected items to their corresponding planogram sections using polygon centroids"""
         for item in detected_items:
-            center_x, center_y = item.bbox.center
+            # Use the DetectedItem's smart center calculation (polygon centroid or bbox center)
+            center_x, center_y = item.center
+            
+            # Find which section contains this center point
             section = self.config.find_section_by_position(center_x, center_y)
             item.section_id = section.section_id if section else None
     
     def _find_misplaced_items(self, detected_items: List[DetectedItem]) -> List[MisplacedItem]:
-        """Compare detected items against expected planogram positions"""
+        """Find misplaced items using geometric containment logic with polygon centroids"""
         misplaced_items = []
         
         for item in detected_items:
@@ -147,32 +154,81 @@ class PlanogramAnalyzer:
             if not expected_sections:
                 continue  # Item not in planogram, skip
             
-            # Find the closest expected section
-            min_distance = float('inf')
-            closest_section = None
+            # Use the DetectedItem's smart center calculation (polygon centroid or bbox center)
+            center_x, center_y = item.center
             
-            item_center = item.bbox.center
+            # Check if item's center is within ANY of its expected sections
+            item_in_expected_section = False
+            correct_section_id = None
+            
             for section in expected_sections:
-                section_center = section.position.center
-                distance = np.sqrt(
-                    (item_center[0] - section_center[0]) ** 2 + 
-                    (item_center[1] - section_center[1]) ** 2
-                )
-                if distance < min_distance:
-                    min_distance = distance
-                    closest_section = section
+                # Check if center point is within this section's boundaries
+                if self._point_in_section(center_x, center_y, section):
+                    item_in_expected_section = True
+                    correct_section_id = section.section_id
+                    break
             
-            # Check if item is in the wrong section
-            if item.section_id != closest_section.section_id:
+            # If the item's center is not in any expected section, it's misplaced
+            if not item_in_expected_section:
+                # Find the closest expected section for reporting purposes
+                closest_section = self._find_closest_expected_section(center_x, center_y, expected_sections)
+                
                 misplaced = MisplacedItem(
                     detected_item=item,
-                    expected_section=closest_section.section_id,
-                    actual_section=item.section_id,
-                    distance_from_expected=min_distance
+                    expected_section=closest_section.section_id if closest_section else "Unknown",
+                    actual_section=item.section_id,  # Where it currently is (could be None)
+                    distance_from_expected=0.0  # Not using distance anymore, but keeping for compatibility
                 )
                 misplaced_items.append(misplaced)
         
         return misplaced_items
+    
+    def _point_in_section(self, x: float, y: float, section: PlanogramSection) -> bool:
+        """
+        Check if a point is within a section's boundaries
+        
+        Args:
+            x: X coordinate of the point
+            y: Y coordinate of the point
+            section: PlanogramSection to check against
+            
+        Returns:
+            True if point is within section boundaries, False otherwise
+        """
+        bbox = section.position
+        return bbox.x1 <= x <= bbox.x2 and bbox.y1 <= y <= bbox.y2
+    
+    def _find_closest_expected_section(self, x: float, y: float, 
+                                     expected_sections: List[PlanogramSection]) -> Optional[PlanogramSection]:
+        """
+        Find the closest expected section to a given point
+        
+        Args:
+            x: X coordinate of the point
+            y: Y coordinate of the point
+            expected_sections: List of sections where the item should be
+            
+        Returns:
+            The closest expected section, or None if no sections provided
+        """
+        if not expected_sections:
+            return None
+        
+        min_distance = float('inf')
+        closest_section = None
+        
+        for section in expected_sections:
+            # Calculate distance from point to section center
+            section_center_x = (section.position.x1 + section.position.x2) / 2
+            section_center_y = (section.position.y1 + section.position.y2) / 2
+            
+            distance = ((x - section_center_x) ** 2 + (y - section_center_y) ** 2) ** 0.5
+            
+            if distance < min_distance:
+                min_distance = distance
+                closest_section = section
+        
+        return closest_section
     
     def _calculate_inventory_status(self, detected_items: List[DetectedItem]) -> List[InventoryStatus]:
         """Calculate inventory status for each section"""
@@ -270,150 +326,158 @@ class PlanogramAnalyzer:
         detected_items: List[DetectedItem],
         misplaced_items: List[MisplacedItem]
     ) -> Image.Image:
-        """Create an annotated image showing detections and issues with segmentation masks"""
-        # Create a copy of the original image
+        """Create an annotated image showing detected items only"""
+        # Create a copy of the original image for annotation
         annotated = original_image.copy()
         draw = ImageDraw.Draw(annotated)
         
         # Try to load a font, fallback to default if not available
         try:
+            from PIL import ImageFont
             font = ImageFont.truetype("arial.ttf", 16)
         except:
-            font = ImageFont.load_default()
+            try:
+                font = ImageFont.load_default()
+            except:
+                font = None
         
-        # Get set of misplaced item IDs for color coding
-        misplaced_item_objects = [m.detected_item for m in misplaced_items]
+        # Color scheme for different classes
+        class_colors = {
+            'bottled_drinks': '#FF6B6B',      # Red
+            'canned_drinks': '#4ECDC4',       # Teal
+            'large_plates': '#45B7D1',        # Blue
+            'salads_bowls': '#96CEB4',        # Green
+            'sandwiches': '#FFEAA7',          # Yellow
+            'small_plates': '#DDA0DD',        # Plum
+            'wraps': '#98D8C8',               # Mint
+            'yogurt_cups_large': '#F7DC6F',   # Light yellow
+            'yogurt_cups_small': '#BB8FCE'    # Light purple
+        }
         
-        # Create color mapping for each class
-        class_colors = self._get_class_colors(detected_items)
-        
-        # Draw masks and bounding boxes for detected items
+        # Draw detected items
         for item in detected_items:
-            bbox = item.bbox
+            # Convert from reference coordinates to display coordinates
+            display_bbox = CoordinateSystem.reference_to_original(item.bbox, original_image)
             
-            # Get unique color for this class
-            class_color = class_colors.get(item.class_name, "blue")
+            # Use class-specific color for all items
+            color = class_colors.get(item.class_name, '#888888')
+            width = 2
             
-            # Choose color based on whether item is misplaced
-            if item in misplaced_item_objects:
-                color = "red"  # Misplaced items in red
-                mask_color = (255, 0, 0, 64)  # Semi-transparent red
-                width = 3
-            else:
-                color = class_color  # Use class-specific color
-                # Convert color name to RGBA for mask
-                mask_color = self._color_name_to_rgba(color, alpha=64)
-                width = 2
+            # Create label
+            label = f"{item.class_name} ({item.confidence:.2f})"
             
-            # Draw segmentation mask if available
-            if item.mask is not None:
+            # Handle mask visualization if available
+            if item.mask is not None or item.mask_polygon:
+                # Semi-transparent color for mask overlay
+                mask_color = (*self._hex_to_rgb(color), 100)  # Semi-transparent
+                
                 try:
                     # Try polygon-based mask first (more efficient)
                     if item.mask_polygon:
-                        # Create a mask overlay
-                        mask_overlay = Image.new('RGBA', annotated.size, (0, 0, 0, 0))
-                        mask_draw = ImageDraw.Draw(mask_overlay)
+                        # Convert polygon coordinates from reference to display
+                        display_polygon = []
+                        for point in item.mask_polygon:
+                            if len(point) >= 2:
+                                # Transform point from reference to original coordinates
+                                ref_bbox_point = BoundingBox(point[0], point[1], point[0], point[1])
+                                display_point = CoordinateSystem.reference_to_original(ref_bbox_point, original_image)
+                                display_polygon.append((int(display_point.x1), int(display_point.y1)))
                         
-                        # Convert polygon coordinates to PIL format
-                        polygon_points = [(int(x), int(y)) for x, y in item.mask_polygon]
-                        
-                        # Draw filled polygon for mask
-                        mask_draw.polygon(polygon_points, fill=mask_color)
-                        
-                        # Composite the mask overlay onto the annotated image
-                        annotated = Image.alpha_composite(annotated.convert('RGBA'), mask_overlay).convert('RGB')
-                        draw = ImageDraw.Draw(annotated)
-                        
-                        # Draw polygon outline
-                        draw.polygon(polygon_points, outline=color, width=width)
+                        if display_polygon:
+                            # Create a mask overlay
+                            mask_overlay = Image.new('RGBA', annotated.size, (0, 0, 0, 0))
+                            mask_draw = ImageDraw.Draw(mask_overlay)
+                            
+                            # Draw filled polygon for mask
+                            mask_draw.polygon(display_polygon, fill=mask_color)
+                            
+                            # Composite the mask overlay onto the annotated image
+                            annotated = Image.alpha_composite(annotated.convert('RGBA'), mask_overlay).convert('RGB')
+                            draw = ImageDraw.Draw(annotated)
+                            
+                            # Draw polygon outline
+                            draw.polygon(display_polygon, outline=color, width=width)
                         
                     else:
-                        # Fallback to binary mask overlay
-                        annotated = self._draw_mask_overlay(annotated, item.mask, mask_color)
-                        draw = ImageDraw.Draw(annotated)
-                        
-                        # Draw bounding box as outline
+                        # Fallback to bounding box visualization
                         draw.rectangle(
-                            [bbox.x1, bbox.y1, bbox.x2, bbox.y2],
+                            [display_bbox.x1, display_bbox.y1, display_bbox.x2, display_bbox.y2],
                             outline=color,
                             width=width
                         )
                         
                 except Exception as e:
                     print(f"⚠️ Error drawing mask for {item.class_name}: {e}")
-                    # Fallback to bounding box only
+                    # Fallback to bounding box
                     draw.rectangle(
-                        [bbox.x1, bbox.y1, bbox.x2, bbox.y2],
+                        [display_bbox.x1, display_bbox.y1, display_bbox.x2, display_bbox.y2],
                         outline=color,
                         width=width
                     )
             else:
-                # Draw bounding box if no mask available
+                # Draw bounding box only
                 draw.rectangle(
-                    [bbox.x1, bbox.y1, bbox.x2, bbox.y2],
+                    [display_bbox.x1, display_bbox.y1, display_bbox.x2, display_bbox.y2],
                     outline=color,
                     width=width
                 )
             
-            # Draw label with mask information
-            label = f"{item.class_name} ({item.confidence:.2f})"
-            if item.mask is not None:
-                area = item.calculate_mask_area()
-                label += f" [Area: {area:.0f}]"
-            
-            # Try different label positions to avoid overlap
-            label_positions = [
-                (bbox.x1, bbox.y1 - 25),  # Above
-                (bbox.x2 + 5, bbox.y1),   # Right side
-                (bbox.x1, bbox.y2 + 5),   # Below
-                (bbox.x1 - 100, bbox.y1)  # Left side
-            ]
-            
-            label_placed = False
-            for label_x, label_y in label_positions:
-                # Check if this position is within image bounds
-                if label_x >= 0 and label_y >= 0:
-                    # Draw label background for better visibility
-                    label_bbox = draw.textbbox((label_x, label_y), label, font=font)
-                    
-                    # Check if label would fit within image bounds
-                    if label_bbox[2] <= annotated.width and label_bbox[3] <= annotated.height:
+            # Draw label with background
+            if font:
+                # Try multiple positions for label to avoid overlap
+                label_positions = [
+                    (display_bbox.x1, display_bbox.y1 - 25),  # Above
+                    (display_bbox.x1, display_bbox.y2 + 5),   # Below
+                    (display_bbox.x2 + 5, display_bbox.y1),   # Right
+                    (max(0, display_bbox.x1 - 100), display_bbox.y1)  # Left
+                ]
+                
+                label_placed = False
+                for label_x, label_y in label_positions:
+                    # Check if this position is within image bounds
+                    if label_x >= 0 and label_y >= 0:
+                        # Draw label background for better visibility
+                        try:
+                            label_bbox = draw.textbbox((label_x, label_y), label, font=font)
+                            
+                            # Check if label would fit within image bounds
+                            if label_bbox[2] <= annotated.width and label_bbox[3] <= annotated.height:
+                                draw.rectangle(
+                                    [label_bbox[0] - 2, label_bbox[1] - 2, label_bbox[2] + 2, label_bbox[3] + 2],
+                                    fill="white",
+                                    outline=color,
+                                    width=1
+                                )
+                                
+                                draw.text(
+                                    (label_x, label_y),
+                                    label,
+                                    fill=color,
+                                    font=font
+                                )
+                                label_placed = True
+                                break
+                        except:
+                            # Fallback for older PIL versions
+                            draw.text((label_x, label_y), label, fill=color, font=font)
+                            label_placed = True
+                            break
+                
+                # If no position worked, place it at the original position
+                if not label_placed:
+                    label_x = display_bbox.x1
+                    label_y = display_bbox.y1 - 25
+                    try:
+                        label_bbox = draw.textbbox((label_x, label_y), label, font=font)
                         draw.rectangle(
                             [label_bbox[0] - 2, label_bbox[1] - 2, label_bbox[2] + 2, label_bbox[3] + 2],
                             fill="white",
                             outline=color,
                             width=1
                         )
-                        
-                        draw.text(
-                            (label_x, label_y),
-                            label,
-                            fill=color,
-                            font=font
-                        )
-                        label_placed = True
-                        break
-            
-            # If no position worked, place it at the original position
-            if not label_placed:
-                label_x = bbox.x1
-                label_y = bbox.y1 - 25
-                label_bbox = draw.textbbox((label_x, label_y), label, font=font)
-                draw.rectangle(
-                    [label_bbox[0] - 2, label_bbox[1] - 2, label_bbox[2] + 2, label_bbox[3] + 2],
-                    fill="white",
-                    outline=color,
-                    width=1
-                )
-                draw.text(
-                    (label_x, label_y),
-                    label,
-                    fill=color,
-                    font=font
-                )
-        
-        # Note: Planogram section boundaries are not drawn on the annotated image
-        # to avoid confusion with the actual detected objects
+                    except:
+                        pass
+                    draw.text((label_x, label_y), label, fill=color, font=font)
         
         # Draw color legend
         self._draw_color_legend(annotated, class_colors, font)
@@ -594,3 +658,8 @@ class PlanogramAnalyzer:
             'annotated_image': None,
             'error': message
         } 
+
+    def _hex_to_rgb(self, hex_color: str) -> tuple:
+        """Convert hex color to RGB tuple"""
+        hex_color = hex_color.lstrip('#')
+        return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4)) 

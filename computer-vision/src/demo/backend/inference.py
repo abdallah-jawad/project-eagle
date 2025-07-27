@@ -174,7 +174,7 @@ class ModelInference:
         return info
     
     def is_ready(self) -> bool:
-        """Check if the model is ready for inference"""
+        """Check if the model is loaded and ready for inference"""
         return self.model is not None
     
     def extract_masked_object(self, image: np.ndarray, mask: np.ndarray) -> np.ndarray:

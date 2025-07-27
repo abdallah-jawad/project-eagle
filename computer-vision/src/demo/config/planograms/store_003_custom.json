@@ -1,0 +1,147 @@
+{
+  "metadata": {
+    "name": "Pick Demo",
+    "store_id": "STORE_003",
+    "created_date": "2024-01-01",
+    "version": "1.0",
+    "description": ""
+  },
+  "planogram_image_path": "config/images/store_003_planogram.jpg",
+  "sections": [
+    {
+      "section_id": "SECTION_WATER",
+      "name": "Water",
+      "expected_items": [
+        "bottled_drinks"
+      ],
+      "expected_count": 4,
+      "position": {
+        "x1": 40,
+        "y1": 65,
+        "x2": 283,
+        "y2": 385
+      },
+      "priority": "Low"
+    },
+    {
+      "section_id": "SECTION_CANNED_DRINKS",
+      "name": "Soda",
+      "expected_items": [
+        "canned_drinks"
+      ],
+      "expected_count": 6,
+      "position": {
+        "x1": 275,
+        "y1": 230,
+        "x2": 452,
+        "y2": 390
+      },
+      "priority": "Low"
+    },
+    {
+      "section_id": "SECTION_LARGE_YOGURT",
+      "name": "Large Yogurt",
+      "expected_items": [
+        "yogurt_cups_large"
+      ],
+      "expected_count": 4,
+      "position": {
+        "x1": 451,
+        "y1": 217,
+        "x2": 702,
+        "y2": 396
+      },
+      "priority": "High"
+    },
+    {
+      "section_id": "SECTION_SMALL_YOGURT",
+      "name": "Small Yogurt",
+      "expected_items": [
+        "yogurt_cups_small"
+      ],
+      "expected_count": 4,
+      "position": {
+        "x1": 697,
+        "y1": 216,
+        "x2": 987,
+        "y2": 401
+      },
+      "priority": "Medium"
+    },
+    {
+      "section_id": "SECTION_SALADS",
+      "name": "Salads",
+      "expected_items": [
+        "salads_bowls"
+      ],
+      "expected_count": 6,
+      "position": {
+        "x1": 41,
+        "y1": 403,
+        "x2": 630,
+        "y2": 734
+      },
+      "priority": "High"
+    },
+    {
+      "section_id": "SECTION_LARGE_PLATES",
+      "name": "Large Plates",
+      "expected_items": [
+        "large_plates"
+      ],
+      "expected_count": 6,
+      "position": {
+        "x1": 627,
+        "y1": 404,
+        "x2": 1019,
+        "y2": 739
+      },
+      "priority": "High"
+    },
+    {
+      "section_id": "SECTION_WRAPS",
+      "name": "Wraps",
+      "expected_items": [
+        "wraps"
+      ],
+      "expected_count": 4,
+      "position": {
+        "x1": 65,
+        "y1": 760,
+        "x2": 422,
+        "y2": 1062
+      },
+      "priority": "High"
+    },
+    {
+      "section_id": "SECTION_SANDWICHES",
+      "name": "Sandwiches",
+      "expected_items": [
+        "sandwiches"
+      ],
+      "expected_count": 4,
+      "position": {
+        "x1": 419,
+        "y1": 774,
+        "x2": 636,
+        "y2": 1068
+      },
+      "priority": "High"
+    },
+    {
+      "section_id": "SECTION_SMALL_PLATES",
+      "name": "Small Plates",
+      "expected_items": [
+        "small_plates"
+      ],
+      "expected_count": 6,
+      "position": {
+        "x1": 606,
+        "y1": 747,
+        "x2": 1000,
+        "y2": 1076
+      },
+      "priority": "High"
+    }
+  ]
+}
