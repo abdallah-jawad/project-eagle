@@ -1,4 +1,3 @@
-import io
 import os
 import uuid
 from typing import List, Dict, Any, Optional, Tuple
@@ -12,13 +11,14 @@ from .models import (
     PlanogramMetrics
 )
 from .config import PlanogramConfig
+from .inference import ModelInference
 
 class PlanogramAnalyzer:
     """Main class for analyzing planogram images and detecting compliance issues"""
     
     def __init__(self, config_path: Optional[str] = None):
         self.config: Optional[PlanogramConfig] = None
-        self.yolo_model = None  # TODO: Load YOLO model
+        self.inference_layer = ModelInference()
         
         if config_path:
             self.load_planogram_config(config_path)
@@ -43,23 +43,19 @@ class PlanogramAnalyzer:
             return self.config.planogram_image_path
         return None
     
-    def analyze_image(self, image_data: bytes, target_size: tuple = (1080, 1440)) -> Dict[str, Any]:
+    def analyze_image(self, image: Image.Image) -> Dict[str, Any]:
         """
         Main analysis function that processes an image and returns comprehensive results
         
         Args:
-            image_data: Raw image bytes
-            target_size: Target size to resize image for analysis (width, height)
+            image: PIL Image to analyze
         """
         if not self.config:
             return self._create_empty_results("No planogram configuration loaded")
         
         try:
-            # Convert bytes to PIL Image
-            original_image = Image.open(io.BytesIO(image_data))
-            
-            # Resize image for analysis to normalize coordinate system
-            image = self._resize_image_for_analysis(original_image, target_size)
+            # Use the provided PIL Image directly (no resizing needed)
+            original_image = image
             
             # Step 1: Run object detection (TODO: Replace with actual YOLO)
             # Hardcoded optimal thresholds
@@ -106,80 +102,30 @@ class PlanogramAnalyzer:
         iou_threshold: float
     ) -> List[DetectedItem]:
         """
-        Run YOLO object detection on the image
-        TODO: Replace with actual YOLO implementation
+        Run object detection on the image using the inference layer
         """
-        # Mock detection results for demo purposes
-        # In real implementation, this would use your trained YOLO model
         detected_items = []
         
-        # Sample detections for demonstration (includes misplaced items for demo)
-        sample_detections = [
-            # CORRECTLY PLACED ITEMS
-            # Water bottles (WATER_SECTION: x=54-275, y=55-357)
-            {'class_id': 0, 'class_name': 'water_bottle', 'confidence': 0.90, 'bbox': [80, 120, 120, 180]},
-            {'class_id': 0, 'class_name': 'bottle', 'confidence': 0.85, 'bbox': [150, 200, 190, 260]},
-            
-            # Canned drinks (CANNED_DRINKS: x=288-470, y=184-351)  
-            {'class_id': 1, 'class_name': 'can', 'confidence': 0.88, 'bbox': [320, 220, 360, 270]},
-            {'class_id': 1, 'class_name': 'soda_can', 'confidence': 0.82, 'bbox': [380, 250, 420, 300]},
-            
-            # Yogurt cups (YOGURT_SECTION: x=455-1042, y=154-355)
-            {'class_id': 2, 'class_name': 'yogurt', 'confidence': 0.91, 'bbox': [500, 180, 550, 220]},
-            {'class_id': 2, 'class_name': 'dessert_cup', 'confidence': 0.87, 'bbox': [650, 200, 700, 240]},
-            {'class_id': 2, 'class_name': 'yogurt', 'confidence': 0.89, 'bbox': [800, 170, 850, 210]},
-            
-            # Prepared salads (PREPARED_SALADS: x=34-1031, y=384-734)
-            {'class_id': 3, 'class_name': 'salad_bowl', 'confidence': 0.92, 'bbox': [100, 450, 180, 520]},
-            {'class_id': 3, 'class_name': 'prepared_meal', 'confidence': 0.85, 'bbox': [300, 500, 380, 570]},
-            {'class_id': 3, 'class_name': 'salad_bowl', 'confidence': 0.88, 'bbox': [500, 480, 580, 550]},
-            {'class_id': 3, 'class_name': 'prepared_meal', 'confidence': 0.90, 'bbox': [700, 520, 780, 590]},
-            
-            # Wraps (WRAP_SECTION: x=103-368, y=792-1104) 
-            {'class_id': 4, 'class_name': 'wrap', 'confidence': 0.86, 'bbox': [140, 850, 190, 920]},
-            {'class_id': 4, 'class_name': 'sandwich_wrap', 'confidence': 0.83, 'bbox': [250, 900, 300, 970]},
-            
-            # Sandwiches (SANDWICH_SECTION: x=378-602, y=795-1103)
-            {'class_id': 5, 'class_name': 'sandwich', 'confidence': 0.89, 'bbox': [420, 850, 480, 920]},
-            {'class_id': 5, 'class_name': 'boxed_sandwich', 'confidence': 0.84, 'bbox': [500, 950, 560, 1020]},
-            
-            # Protein plates (PROTEIN_MEALS: x=621-970, y=765-1112)
-            {'class_id': 6, 'class_name': 'protein_plate', 'confidence': 0.87, 'bbox': [680, 820, 750, 890]},
-            {'class_id': 6, 'class_name': 'meal_container', 'confidence': 0.91, 'bbox': [800, 900, 870, 970]},
-            
-            # MISPLACED ITEMS (intentionally in wrong sections for demo)
-            # Water bottle in CANNED_DRINKS section (should be in WATER_SECTION)
-            {'class_id': 0, 'class_name': 'water_bottle', 'confidence': 0.88, 'bbox': [350, 230, 390, 290]},
-            
-            # Yogurt in WATER_SECTION (should be in YOGURT_SECTION)
-            {'class_id': 2, 'class_name': 'yogurt', 'confidence': 0.85, 'bbox': [200, 280, 250, 330]},
-            
-            # Can in YOGURT_SECTION (should be in CANNED_DRINKS)
-            {'class_id': 1, 'class_name': 'can', 'confidence': 0.83, 'bbox': [950, 190, 990, 240]},
-            
-            # Sandwich in WRAP_SECTION (should be in SANDWICH_SECTION)
-            {'class_id': 5, 'class_name': 'sandwich', 'confidence': 0.80, 'bbox': [180, 1000, 240, 1060]},
-            
-            # Wrap in PROTEIN_MEALS section (should be in WRAP_SECTION)
-            {'class_id': 4, 'class_name': 'wrap', 'confidence': 0.78, 'bbox': [720, 1000, 780, 1070]},
-            
-            # Salad bowl in YOGURT_SECTION (should be in PREPARED_SALADS)
-            {'class_id': 3, 'class_name': 'salad_bowl', 'confidence': 0.82, 'bbox': [600, 280, 680, 340]},
-            
-            # Protein plate in PREPARED_SALADS (should be in PROTEIN_MEALS)
-            {'class_id': 6, 'class_name': 'protein_plate', 'confidence': 0.79, 'bbox': [850, 600, 920, 670]},
-        ]
+        # Check if inference layer is ready
+        if not self.inference_layer.is_ready():
+            print("⚠️ Inference layer not ready, returning empty results")
+            return detected_items
         
-        for detection in sample_detections:
-            if detection['confidence'] >= confidence_threshold:
-                bbox = BoundingBox(*detection['bbox'])
-                item = DetectedItem(
-                    class_id=detection['class_id'],
-                    class_name=detection['class_name'],
-                    confidence=detection['confidence'],
-                    bbox=bbox
-                )
-                detected_items.append(item)
+        # Run inference
+        detections = self.inference_layer.infer(image, confidence_threshold, iou_threshold)
+        
+        # Convert detection dictionaries to DetectedItem objects
+        for detection in detections:
+            bbox = BoundingBox(*detection['bbox'])
+            item = DetectedItem(
+                class_id=detection['class_id'],
+                class_name=detection['class_name'],
+                confidence=detection['confidence'],
+                bbox=bbox,
+                mask=detection.get('mask'),
+                mask_polygon=detection.get('mask_polygon', [])
+            )
+            detected_items.append(item)
         
         return detected_items
     
@@ -324,7 +270,7 @@ class PlanogramAnalyzer:
         detected_items: List[DetectedItem],
         misplaced_items: List[MisplacedItem]
     ) -> Image.Image:
-        """Create an annotated image showing detections and issues"""
+        """Create an annotated image showing detections and issues with segmentation masks"""
         # Create a copy of the original image
         annotated = original_image.copy()
         draw = ImageDraw.Draw(annotated)
@@ -338,89 +284,305 @@ class PlanogramAnalyzer:
         # Get set of misplaced item IDs for color coding
         misplaced_item_objects = [m.detected_item for m in misplaced_items]
         
-        # Draw bounding boxes for detected items
+        # Create color mapping for each class
+        class_colors = self._get_class_colors(detected_items)
+        
+        # Draw masks and bounding boxes for detected items
         for item in detected_items:
             bbox = item.bbox
+            
+            # Get unique color for this class
+            class_color = class_colors.get(item.class_name, "blue")
             
             # Choose color based on whether item is misplaced
             if item in misplaced_item_objects:
                 color = "red"  # Misplaced items in red
+                mask_color = (255, 0, 0, 64)  # Semi-transparent red
                 width = 3
             else:
-                color = "green"  # Correctly placed items in green
+                color = class_color  # Use class-specific color
+                # Convert color name to RGBA for mask
+                mask_color = self._color_name_to_rgba(color, alpha=64)
                 width = 2
             
-            # Draw bounding box
-            draw.rectangle(
-                [bbox.x1, bbox.y1, bbox.x2, bbox.y2],
-                outline=color,
-                width=width
-            )
+            # Draw segmentation mask if available
+            if item.mask is not None:
+                try:
+                    # Try polygon-based mask first (more efficient)
+                    if item.mask_polygon:
+                        # Create a mask overlay
+                        mask_overlay = Image.new('RGBA', annotated.size, (0, 0, 0, 0))
+                        mask_draw = ImageDraw.Draw(mask_overlay)
+                        
+                        # Convert polygon coordinates to PIL format
+                        polygon_points = [(int(x), int(y)) for x, y in item.mask_polygon]
+                        
+                        # Draw filled polygon for mask
+                        mask_draw.polygon(polygon_points, fill=mask_color)
+                        
+                        # Composite the mask overlay onto the annotated image
+                        annotated = Image.alpha_composite(annotated.convert('RGBA'), mask_overlay).convert('RGB')
+                        draw = ImageDraw.Draw(annotated)
+                        
+                        # Draw polygon outline
+                        draw.polygon(polygon_points, outline=color, width=width)
+                        
+                    else:
+                        # Fallback to binary mask overlay
+                        annotated = self._draw_mask_overlay(annotated, item.mask, mask_color)
+                        draw = ImageDraw.Draw(annotated)
+                        
+                        # Draw bounding box as outline
+                        draw.rectangle(
+                            [bbox.x1, bbox.y1, bbox.x2, bbox.y2],
+                            outline=color,
+                            width=width
+                        )
+                        
+                except Exception as e:
+                    print(f"⚠️ Error drawing mask for {item.class_name}: {e}")
+                    # Fallback to bounding box only
+                    draw.rectangle(
+                        [bbox.x1, bbox.y1, bbox.x2, bbox.y2],
+                        outline=color,
+                        width=width
+                    )
+            else:
+                # Draw bounding box if no mask available
+                draw.rectangle(
+                    [bbox.x1, bbox.y1, bbox.x2, bbox.y2],
+                    outline=color,
+                    width=width
+                )
             
-            # Draw label
+            # Draw label with mask information
             label = f"{item.class_name} ({item.confidence:.2f})"
-            draw.text(
-                (bbox.x1, bbox.y1 - 20),
-                label,
-                fill=color,
-                font=font
-            )
-        
-        # Draw planogram section boundaries (optional)
-        for section in self.config.sections:
-            bbox = section.position
-            draw.rectangle(
-                [bbox.x1, bbox.y1, bbox.x2, bbox.y2],
-                outline="blue",
-                width=1
-            )
+            if item.mask is not None:
+                area = item.calculate_mask_area()
+                label += f" [Area: {area:.0f}]"
             
-            # Section label
-            draw.text(
-                (bbox.x1, bbox.y1 + 5),
-                section.section_id,
-                fill="blue",
-                font=font
-            )
+            # Try different label positions to avoid overlap
+            label_positions = [
+                (bbox.x1, bbox.y1 - 25),  # Above
+                (bbox.x2 + 5, bbox.y1),   # Right side
+                (bbox.x1, bbox.y2 + 5),   # Below
+                (bbox.x1 - 100, bbox.y1)  # Left side
+            ]
+            
+            label_placed = False
+            for label_x, label_y in label_positions:
+                # Check if this position is within image bounds
+                if label_x >= 0 and label_y >= 0:
+                    # Draw label background for better visibility
+                    label_bbox = draw.textbbox((label_x, label_y), label, font=font)
+                    
+                    # Check if label would fit within image bounds
+                    if label_bbox[2] <= annotated.width and label_bbox[3] <= annotated.height:
+                        draw.rectangle(
+                            [label_bbox[0] - 2, label_bbox[1] - 2, label_bbox[2] + 2, label_bbox[3] + 2],
+                            fill="white",
+                            outline=color,
+                            width=1
+                        )
+                        
+                        draw.text(
+                            (label_x, label_y),
+                            label,
+                            fill=color,
+                            font=font
+                        )
+                        label_placed = True
+                        break
+            
+            # If no position worked, place it at the original position
+            if not label_placed:
+                label_x = bbox.x1
+                label_y = bbox.y1 - 25
+                label_bbox = draw.textbbox((label_x, label_y), label, font=font)
+                draw.rectangle(
+                    [label_bbox[0] - 2, label_bbox[1] - 2, label_bbox[2] + 2, label_bbox[3] + 2],
+                    fill="white",
+                    outline=color,
+                    width=1
+                )
+                draw.text(
+                    (label_x, label_y),
+                    label,
+                    fill=color,
+                    font=font
+                )
+        
+        # Note: Planogram section boundaries are not drawn on the annotated image
+        # to avoid confusion with the actual detected objects
+        
+        # Draw color legend
+        self._draw_color_legend(annotated, class_colors, font)
         
         return annotated
     
-    def _resize_image_for_analysis(self, image: Image.Image, target_size: tuple) -> Image.Image:
+    def _get_class_colors(self, detected_items: List[DetectedItem]) -> Dict[str, str]:
         """
-        Resize image for analysis while maintaining aspect ratio
+        Generate unique colors for each class
         
         Args:
-            image: Original PIL Image
-            target_size: Target (width, height)
+            detected_items: List of detected items
             
         Returns:
-            Resized PIL Image normalized to target_size
+            Dictionary mapping class names to colors
         """
-        target_width, target_height = target_size
-        original_width, original_height = image.size
+        # Predefined color palette for classes
+        colors = [
+            "blue", "green", "orange", "purple", "brown", "pink", "gray", 
+            "cyan", "magenta", "lime", "navy", "maroon", "olive", "teal",
+            "coral", "gold", "indigo", "violet", "crimson", "forestgreen"
+        ]
         
-        # Calculate scaling factor to fit within target size while maintaining aspect ratio
-        scale_w = target_width / original_width
-        scale_h = target_height / original_height
-        scale = min(scale_w, scale_h)  # Use smaller scale to fit within bounds
+        # Get unique class names
+        unique_classes = list(set(item.class_name for item in detected_items))
         
-        # Calculate new dimensions
-        new_width = int(original_width * scale)
-        new_height = int(original_height * scale)
+        # Create color mapping
+        class_colors = {}
+        for i, class_name in enumerate(unique_classes):
+            color_index = i % len(colors)
+            class_colors[class_name] = colors[color_index]
         
-        # Resize image
-        resized = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        return class_colors
+    
+    def _color_name_to_rgba(self, color_name: str, alpha: int = 255) -> Tuple[int, int, int, int]:
+        """
+        Convert color name to RGBA tuple
         
-        # Create new image with exact target size and paste resized image centered
-        final_image = Image.new('RGB', target_size, (255, 255, 255))  # White background
+        Args:
+            color_name: Name of the color
+            alpha: Alpha value (0-255)
+            
+        Returns:
+            RGBA tuple
+        """
+        color_map = {
+            "red": (255, 0, 0),
+            "green": (0, 255, 0),
+            "blue": (0, 0, 255),
+            "orange": (255, 165, 0),
+            "purple": (128, 0, 128),
+            "brown": (165, 42, 42),
+            "pink": (255, 192, 203),
+            "gray": (128, 128, 128),
+            "cyan": (0, 255, 255),
+            "magenta": (255, 0, 255),
+            "lime": (0, 255, 0),
+            "navy": (0, 0, 128),
+            "maroon": (128, 0, 0),
+            "olive": (128, 128, 0),
+            "teal": (0, 128, 128),
+            "coral": (255, 127, 80),
+            "gold": (255, 215, 0),
+            "indigo": (75, 0, 130),
+            "violet": (238, 130, 238),
+            "crimson": (220, 20, 60),
+            "forestgreen": (34, 139, 34)
+        }
         
-        # Calculate position to center the image
-        paste_x = (target_width - new_width) // 2
-        paste_y = (target_height - new_height) // 2
+        rgb = color_map.get(color_name.lower(), (0, 0, 255))  # Default to blue
+        return rgb + (alpha,)
+    
+    def _draw_color_legend(self, image: Image.Image, class_colors: Dict[str, str], font) -> None:
+        """
+        Draw a color legend showing which color corresponds to which class
         
-        final_image.paste(resized, (paste_x, paste_y))
+        Args:
+            image: PIL Image to draw on
+            class_colors: Dictionary mapping class names to colors
+            font: Font to use for text
+        """
+        if not class_colors:
+            return
         
-        return final_image
+        draw = ImageDraw.Draw(image)
+        width, height = image.size
+        
+        # Legend position (top-right corner)
+        legend_x = width - 200
+        legend_y = 10
+        box_width = 180
+        box_height = 20 * len(class_colors) + 30
+        
+        # Draw legend background
+        draw.rectangle(
+            [legend_x, legend_y, legend_x + box_width, legend_y + box_height],
+            fill="white",
+            outline="black",
+            width=2
+        )
+        
+        # Draw legend title
+        draw.text(
+            (legend_x + 5, legend_y + 5),
+            "Class Colors:",
+            fill="black",
+            font=font
+        )
+        
+        # Draw color boxes and labels
+        for i, (class_name, color) in enumerate(class_colors.items()):
+            y_pos = legend_y + 25 + (i * 20)
+            
+            # Draw color box
+            draw.rectangle(
+                [legend_x + 5, y_pos, legend_x + 20, y_pos + 15],
+                fill=color,
+                outline="black",
+                width=1
+            )
+            
+            # Draw class name (truncated if too long)
+            display_name = class_name[:15] + "..." if len(class_name) > 15 else class_name
+            draw.text(
+                (legend_x + 25, y_pos),
+                display_name,
+                fill="black",
+                font=font
+            )
+    
+    def _draw_mask_overlay(
+        self, 
+        image: Image.Image, 
+        mask: np.ndarray, 
+        color: Tuple[int, int, int, int]
+    ) -> Image.Image:
+        """
+        Draw a binary mask overlay on an image
+        
+        Args:
+            image: PIL Image to draw on
+            mask: Binary mask as numpy array (H, W)
+            color: RGBA color tuple for the mask
+            
+        Returns:
+            Image with mask overlay
+        """
+        try:
+            # Convert mask to PIL Image
+            mask_pil = Image.fromarray(mask.astype(np.uint8) * 255, mode='L')
+            
+            # Resize mask to match image size if needed
+            if mask_pil.size != image.size:
+                mask_pil = mask_pil.resize(image.size, Image.NEAREST)
+            
+            # Create color overlay
+            color_overlay = Image.new('RGBA', image.size, color)
+            
+            # Apply mask as alpha channel
+            color_overlay.putalpha(mask_pil)
+            
+            # Composite with original image
+            result = Image.alpha_composite(image.convert('RGBA'), color_overlay)
+            
+            return result.convert('RGB')
+            
+        except Exception as e:
+            print(f"⚠️ Error creating mask overlay: {e}")
+            return image
     
     def _create_empty_results(self, message: str = "No results") -> Dict[str, Any]:
         """Create empty results structure with error message"""

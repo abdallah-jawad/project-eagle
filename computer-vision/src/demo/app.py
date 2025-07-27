@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 from PIL import Image
-import io
 import os
 from backend.planogram_analyzer import PlanogramAnalyzer
 from backend.config import PlanogramConfig
@@ -59,58 +58,73 @@ def main():
         st.subheader("Analysis Settings")
         st.info("Detection parameters are optimized and set automatically.")
 
-    # Main content area
-    col1, col2 = st.columns([1, 1])
+    # Main content area - Better balanced layout
+    st.header("📤 Upload & Configuration")
     
-    with col1:
-        st.header("📤 Upload Image")
-        uploaded_file = st.file_uploader(
-            "Choose an image file",
-            type=['png', 'jpg', 'jpeg'],
-            help="Upload an image of your store shelf/planogram to analyze"
-        )
+    # Upload section
+    uploaded_file = st.file_uploader(
+        "Choose an image file",
+        type=['png', 'jpg', 'jpeg'],
+        help="Upload an image of your store shelf/planogram to analyze"
+    )
+    
+    if uploaded_file is not None:
+        # Load the original image for analysis
+        original_image = Image.open(uploaded_file)
         
-        if uploaded_file is not None:
-            # Display uploaded image (resized for better display)
-            image = Image.open(uploaded_file)
-            
-            # Resize image for display if too large
-            display_image = _resize_image_for_display(image, max_width=600)
+        # Create a resized version for display
+        display_image = _resize_image_for_display(original_image, max_width=600)
+        
+        # Two columns for image and planogram
+        col1, col2 = st.columns([1, 1])
+        
+        with col1:
+            st.subheader("📸 Uploaded Image")
             st.image(display_image, caption="Uploaded Image", use_container_width=True)
             
-            # Analyze button
-            if st.button("🔍 Analyze Planogram", type="primary"):
-                with st.spinner("Analyzing planogram..."):
-                    # Convert PIL image to bytes for processing
-                    img_bytes = io.BytesIO()
-                    image.save(img_bytes, format='PNG')
-                    img_bytes = img_bytes.getvalue()
-                    
-                    # Run analysis
-                    results = st.session_state.analyzer.analyze_image(img_bytes)
-                    st.session_state.analysis_results = results
-                    st.success("Analysis complete!")
-    
-    with col2:
-        st.header("📋 Current Planogram")
+            # Store original image in session state
+            st.session_state.original_image = original_image
+            
+            # Action buttons
+            col_btn1, col_btn2 = st.columns(2)
+            with col_btn1:
+                if st.button("🔍 Analyze Planogram", type="primary", use_container_width=True):
+                    with st.spinner("Analyzing planogram..."):
+                        # Run analysis with the original image
+                        results = st.session_state.analyzer.analyze_image(original_image)
+                        st.session_state.analysis_results = results
+                        st.success("Analysis complete!")
+            
+            with col_btn2:
+                if st.button("🗑️ Clear Results", use_container_width=True):
+                    st.session_state.analysis_results = None
+                    st.rerun()
         
-        # Display annotated planogram image if available
-        if 'annotated_planogram_path' in st.session_state and st.session_state.annotated_planogram_path:
-            if os.path.exists(st.session_state.annotated_planogram_path):
-                planogram_image = Image.open(st.session_state.annotated_planogram_path)
-                
-                # Resize planogram for display
-                display_image = _resize_image_for_display(planogram_image, max_width=600)
-                st.image(display_image, caption="Expected Planogram Layout", use_container_width=True)
-                
-                # Show section summary
-                if st.session_state.analyzer.config:
-                    total_sections = len(st.session_state.analyzer.config.sections)
-                    total_expected = sum(s.expected_count for s in st.session_state.analyzer.config.sections)
-                    st.info(f"📊 {total_sections} sections • {total_expected} expected items")
+        with col2:
+            st.subheader("📋 Expected Planogram")
+            
+            # Display annotated planogram image if available
+            if 'annotated_planogram_path' in st.session_state and st.session_state.annotated_planogram_path:
+                if os.path.exists(st.session_state.annotated_planogram_path):
+                    planogram_image = Image.open(st.session_state.annotated_planogram_path)
+                    # Create a resized version for display
+                    planogram_display = _resize_image_for_display(planogram_image, max_width=600)
+                    st.image(planogram_display, caption="Expected Planogram Layout", use_container_width=True)
+                    
+                else:
+                    st.error("Annotated planogram image not found.")
             else:
-                st.error("Annotated planogram image not found.")
-        else:
+                st.info("Please select a planogram configuration to view the expected layout.")
+    else:
+        # Show placeholder when no image is uploaded
+        col1, col2 = st.columns([1, 1])
+        
+        with col1:
+            st.subheader("📸 Uploaded Image")
+            st.info("Please upload an image to begin analysis.")
+        
+        with col2:
+            st.subheader("📋 Expected Planogram")
             st.info("Please select a planogram configuration to view the expected layout.")
 
     # Results section
@@ -118,12 +132,16 @@ def main():
         st.header("📊 Analysis Results")
         results = st.session_state.analysis_results
         
-        # Display annotated image (resized for better display)
+        # Display annotated image
         st.subheader("🎯 Detected Items (Annotated)")
         if results['annotated_image'] is not None:
-            # Resize the annotated image for display
-            display_image = _resize_image_for_display(results['annotated_image'], max_width=800)
-            st.image(display_image, caption="Detected Items", use_container_width=True)
+            # Create a resized version for display
+            display_image = _resize_image_for_display(results['annotated_image'], max_width=1080)
+            
+            # Center the image using columns
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                st.image(display_image, caption="Detected Items")
         
         # Results in tabs (reordered: All Detections → Misplaced → Inventory → Tasks → Summary)
         tab1, tab2, tab3, tab4, tab5 = st.tabs([
@@ -144,15 +162,21 @@ def main():
                 if 'section_id' in results['detected_items'].columns:
                     section_counts = results['detected_items']['section_id'].value_counts()
                     st.subheader("Detections by Section")
-                    col1, col2 = st.columns(2)
-                    for i, (section, count) in enumerate(section_counts.items()):
+                    
+                    # Create a DataFrame for the table
+                    section_data = []
+                    for section, count in section_counts.items():
                         if section and section != 'None':  # Skip None/null sections
-                            if i % 2 == 0:
-                                with col1:
-                                    st.metric(f"{section}", count)
-                            else:
-                                with col2:
-                                    st.metric(f"{section}", count)
+                            section_data.append({
+                                'Section': section,
+                                'Detected Items': count
+                            })
+                    
+                    if section_data:
+                        section_df = pd.DataFrame(section_data)
+                        st.table(section_df)
+                    else:
+                        st.info("No items assigned to sections.")
             else:
                 st.warning("No items detected in the image.")
         
@@ -272,19 +296,25 @@ def _resize_image_for_display(image: Image.Image, max_width: int = 800) -> Image
     """
     original_width, original_height = image.size
     
-    # Only resize if image is larger than max_width
-    if original_width <= max_width:
-        return image
-    
-    # Calculate new dimensions maintaining aspect ratio
-    aspect_ratio = original_height / original_width
-    new_width = max_width
-    new_height = int(max_width * aspect_ratio)
-    
-    # Resize using high-quality resampling
-    resized_image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
-    
-    return resized_image
+    # Always resize to ensure consistent display size
+    if original_width > max_width:
+        # Calculate new dimensions maintaining aspect ratio
+        aspect_ratio = original_height / original_width
+        new_width = max_width
+        new_height = int(max_width * aspect_ratio)
+        
+        # Resize using high-quality resampling
+        resized_image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        return resized_image
+    else:
+        # If image is already smaller, still resize to max_width for consistency
+        aspect_ratio = original_height / original_width
+        new_width = max_width
+        new_height = int(max_width * aspect_ratio)
+        
+        # Resize using high-quality resampling
+        resized_image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        return resized_image
 
 if __name__ == "__main__":
     main() 

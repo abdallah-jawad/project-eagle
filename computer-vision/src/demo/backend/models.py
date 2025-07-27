@@ -42,16 +42,18 @@ class BoundingBox:
 
 @dataclass
 class DetectedItem:
-    """Represents a detected item from YOLO model"""
+    """Represents a detected item from YOLO model with segmentation masks"""
     class_id: int
     class_name: str
     confidence: float
     bbox: BoundingBox
     section_id: Optional[str] = None
+    mask: Optional[np.ndarray] = None  # Binary segmentation mask
+    mask_polygon: Optional[List[List[float]]] = None  # Polygon coordinates
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for DataFrame creation"""
-        return {
+        result = {
             'class_id': self.class_id,
             'class_name': self.class_name,
             'confidence': self.confidence,
@@ -61,8 +63,35 @@ class DetectedItem:
             'y2': self.bbox.y2,
             'center_x': self.bbox.center[0],
             'center_y': self.bbox.center[1],
-            'section_id': self.section_id
+            'section_id': self.section_id,
+            'has_mask': self.mask is not None,
+            'mask_area': self.calculate_mask_area() if self.mask is not None else 0.0,
+            'mask_perimeter': self.calculate_mask_perimeter() if self.mask_polygon else 0.0
         }
+        return result
+    
+    def calculate_mask_area(self) -> float:
+        """Calculate the area of the segmentation mask in pixels"""
+        if self.mask is None:
+            return 0.0
+        return float(np.sum(self.mask))
+    
+    def calculate_mask_perimeter(self) -> float:
+        """Calculate the perimeter of the mask using polygon coordinates"""
+        if not self.mask_polygon or len(self.mask_polygon) < 3:
+            return 0.0
+        
+        perimeter = 0.0
+        for i in range(len(self.mask_polygon)):
+            p1 = self.mask_polygon[i]
+            p2 = self.mask_polygon[(i + 1) % len(self.mask_polygon)]
+            
+            # Calculate Euclidean distance
+            dx = p2[0] - p1[0]
+            dy = p2[1] - p1[1]
+            perimeter += np.sqrt(dx*dx + dy*dy)
+        
+        return perimeter
 
 @dataclass
 class PlanogramSection:
