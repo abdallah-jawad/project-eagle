@@ -7,8 +7,8 @@ import numpy as np
 
 from .models import (
     DetectedItem, PlanogramSection, MisplacedItem, 
-    InventoryStatus, Task, AnalysisResults, BoundingBox,
-    PlanogramMetrics
+    InventoryStatus, DetailedInventoryStatus, ItemAvailabilityStatus,
+    Task, AnalysisResults, BoundingBox, PlanogramMetrics
 )
 from .config import PlanogramConfig
 from .inference import ModelInference
@@ -75,6 +75,10 @@ class PlanogramAnalyzer:
             # Step 4: Calculate inventory status
             inventory_status = self._calculate_inventory_status(detected_items)
             
+            # Step 4.5: Calculate detailed inventory status
+            detailed_inventory_status = self._calculate_detailed_inventory_status(detected_items, misplaced_items)
+            item_availability_status = self._calculate_item_availability_status(detected_items, misplaced_items)
+            
             # Step 5: Generate tasks
             tasks = self._generate_tasks(misplaced_items, inventory_status)
             
@@ -86,6 +90,8 @@ class PlanogramAnalyzer:
                 detected_items=pd.DataFrame([item.to_dict() for item in detected_items]),
                 misplaced_items=pd.DataFrame([item.to_dict() for item in misplaced_items]),
                 inventory_status=pd.DataFrame([status.to_dict() for status in inventory_status]),
+                detailed_inventory_status=pd.DataFrame([status.to_dict() for status in detailed_inventory_status]),
+                item_availability_status=pd.DataFrame([status.to_dict() for status in item_availability_status]),
                 tasks=pd.DataFrame([task.to_dict() for task in tasks]),
                 annotated_image=annotated_image
             )
@@ -257,6 +263,173 @@ class PlanogramAnalyzer:
             inventory_status.append(inventory)
         
         return inventory_status
+    
+    def _calculate_detailed_inventory_status(
+        self, 
+        detected_items: List[DetectedItem], 
+        misplaced_items: List[MisplacedItem]
+    ) -> List[DetailedInventoryStatus]:
+        """Calculate detailed inventory status for each section with item type breakdown"""
+        detailed_status = []
+        
+        # Count detected items by section and type
+        section_item_counts = {}
+        for item in detected_items:
+            if item.section_id:
+                if item.section_id not in section_item_counts:
+                    section_item_counts[item.section_id] = {}
+                item_type = item.class_name
+                section_item_counts[item.section_id][item_type] = section_item_counts[item.section_id].get(item_type, 0) + 1
+        
+        # Count misplaced items by their expected sections and types
+        misplaced_counts = {}
+        for misplaced in misplaced_items:
+            expected_section = misplaced.expected_section
+            item_type = misplaced.detected_item.class_name
+            
+            if expected_section not in misplaced_counts:
+                misplaced_counts[expected_section] = {}
+            misplaced_counts[expected_section][item_type] = misplaced_counts[expected_section].get(item_type, 0) + 1
+        
+        # Create detailed status for each configured section
+        for section in self.config.sections:
+            section_id = section.section_id
+            
+            # Build expected items dict (distribute expected count among item types)
+            expected_items = {}
+            total_expected_types = len(section.expected_items)
+            if total_expected_types > 0:
+                base_count = section.expected_count // total_expected_types
+                remainder = section.expected_count % total_expected_types
+                
+                for i, item_type in enumerate(section.expected_items):
+                    expected_items[item_type] = base_count + (1 if i < remainder else 0)
+            
+            # Get detected items in this section
+            detected_items_dict = section_item_counts.get(section_id, {})
+            
+            # Get misplaced items that belong to this section
+            misplaced_items_dict = misplaced_counts.get(section_id, {})
+            
+            # Calculate status for each item type 
+            item_statuses = {}
+            for item_type in expected_items.keys():
+                expected = expected_items[item_type]
+                detected = detected_items_dict.get(item_type, 0)
+                misplaced = misplaced_items_dict.get(item_type, 0)
+                
+                total_available = detected + misplaced
+                if total_available == 0:
+                    status = "Out of Stock"
+                elif detected < expected * 0.5:
+                    status = "Low Stock"  
+                elif total_available > expected * 1.2:
+                    status = "Overstock"
+                else:
+                    status = "In Stock"
+                
+                item_statuses[item_type] = status
+            
+            # Determine overall section status
+            total_detected = sum(detected_items_dict.values())
+            total_expected = section.expected_count
+            overall_status = PlanogramMetrics.determine_inventory_status(total_expected, total_detected)
+            
+            detailed_inv_status = DetailedInventoryStatus(
+                section_id=section_id,
+                section_name=section.name,
+                expected_items=expected_items,
+                detected_items=detected_items_dict,
+                misplaced_items=misplaced_items_dict,
+                status=overall_status,
+                item_statuses=item_statuses
+            )
+            
+            detailed_status.append(detailed_inv_status)
+        
+        return detailed_status
+    
+    def _calculate_item_availability_status(
+        self, 
+        detected_items: List[DetectedItem], 
+        misplaced_items: List[MisplacedItem]
+    ) -> List[ItemAvailabilityStatus]:
+        """Calculate availability status for each item type across all sections"""
+        availability_status = []
+        
+        # Get all unique item types from configuration
+        all_item_types = set()
+        for section in self.config.sections:
+            all_item_types.update(section.expected_items)
+        
+        # Count items by type
+        for item_type in all_item_types:
+            # Calculate expected total across all sections
+            total_expected = 0
+            sections_expecting_item = []
+            for section in self.config.sections:
+                if item_type in section.expected_items:
+                    # Distribute expected count among item types in section
+                    expected_per_type = section.expected_count // len(section.expected_items)
+                    total_expected += expected_per_type
+                    sections_expecting_item.append(section.section_id)
+            
+            # Count detected items of this type
+            total_detected = len([item for item in detected_items if item.class_name == item_type])
+            
+            # Count correctly placed items
+            correctly_placed = 0
+            for item in detected_items:
+                if item.class_name == item_type and item.section_id:
+                    # Check if this section should contain this item type
+                    section = self.config.get_section_by_id(item.section_id)
+                    if section and item_type in section.expected_items:
+                        correctly_placed += 1
+            
+            # Count misplaced items
+            misplaced_count = len([m for m in misplaced_items if m.detected_item.class_name == item_type])
+            
+            # Determine sections with shortages and surpluses
+            sections_with_shortages = []
+            sections_with_surplus = []
+            
+            for section in self.config.sections:
+                if item_type in section.expected_items:
+                    expected_in_section = section.expected_count // len(section.expected_items)
+                    detected_in_section = len([
+                        item for item in detected_items 
+                        if item.class_name == item_type and item.section_id == section.section_id
+                    ])
+                    
+                    if detected_in_section < expected_in_section:
+                        sections_with_shortages.append(section.name)
+                    elif detected_in_section > expected_in_section * 1.2:
+                        sections_with_surplus.append(section.name)
+            
+            # Determine overall status
+            if total_detected == 0:
+                overall_status = "Sold Out"
+            elif total_detected < total_expected * 0.8:
+                overall_status = "Shortage"
+            elif total_detected > total_expected * 1.2:
+                overall_status = "Surplus"
+            else:
+                overall_status = "Available"
+            
+            item_availability = ItemAvailabilityStatus(
+                item_type=item_type,
+                total_expected=total_expected,
+                total_detected=total_detected,
+                correctly_placed=correctly_placed,
+                misplaced=misplaced_count,
+                sections_with_shortages=sections_with_shortages,
+                sections_with_surplus=sections_with_surplus,
+                overall_status=overall_status
+            )
+            
+            availability_status.append(item_availability)
+        
+        return availability_status
     
     def _generate_tasks(
         self, 
@@ -654,6 +827,8 @@ class PlanogramAnalyzer:
             'detected_items': pd.DataFrame(),
             'misplaced_items': pd.DataFrame(),
             'inventory_status': pd.DataFrame(),
+            'detailed_inventory_status': pd.DataFrame(),
+            'item_availability_status': pd.DataFrame(),
             'tasks': pd.DataFrame(),
             'annotated_image': None,
             'error': message

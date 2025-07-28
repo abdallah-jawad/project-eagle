@@ -224,11 +224,13 @@ def main():
                 with col2:
                     st.image(display_image, caption="Detected Items")
             
-            # Results in tabs (reordered: All Detections → Misplaced → Inventory → Tasks → Summary)
-            results_tab1, results_tab2, results_tab3, results_tab4, results_tab5 = st.tabs([
+            # Results in tabs (enhanced with detailed inventory views)
+            results_tab1, results_tab2, results_tab3, results_tab4, results_tab5, results_tab6, results_tab7 = st.tabs([
                 "📦 All Detections",
                 "❌ Misplaced Items", 
-                "📈 Inventory Status",
+                "📈 Basic Inventory",
+                "🔍 Detailed Inventory",
+                "📊 Item Availability",
                 "📋 Tasks",
                 "📄 Summary"
             ])
@@ -296,7 +298,7 @@ def main():
                     st.success("No misplaced items detected!")
             
             with results_tab3:
-                st.subheader("Inventory Status")
+                st.subheader("Basic Inventory Status")
                 if not results['inventory_status'].empty:
                     st.dataframe(results['inventory_status'], use_container_width=True)
                     
@@ -325,6 +327,108 @@ def main():
                     st.info("No inventory data available.")
             
             with results_tab4:
+                st.subheader("Detailed Inventory by Section")
+                if not results['detailed_inventory_status'].empty:
+                    for _, section_data in results['detailed_inventory_status'].iterrows():
+                        section_name = section_data['section_name']
+                        section_status = section_data['status']
+                        
+                        # Create expandable section
+                        with st.expander(f"🏪 {section_name} - {section_status}", expanded=False):
+                            col1, col2, col3 = st.columns(3)
+                            
+                            with col1:
+                                st.metric("Expected Total", section_data['total_expected'])
+                            with col2:
+                                st.metric("Detected in Section", section_data['total_detected'])
+                            with col3:
+                                st.metric("Found Elsewhere", section_data['total_misplaced'])
+                            
+                            # Item breakdown table
+                            st.subheader("Item Type Breakdown")
+                            item_breakdown = section_data['item_breakdown']
+                            
+                            if item_breakdown:
+                                breakdown_df = pd.DataFrame(item_breakdown)
+                                
+                                # Color code the availability status
+                                def highlight_availability(row):
+                                    colors = []
+                                    for col in row.index:
+                                        if col == 'availability_status':
+                                            if row[col] == 'Sold Out':
+                                                colors.append('background-color: #ffcccc; color: #cc0000')
+                                            elif row[col] == 'Misplaced Only':
+                                                colors.append('background-color: #fff3cd; color: #856404')
+                                            elif row[col] == 'Partially Misplaced':
+                                                colors.append('background-color: #cce5ff; color: #004085')
+                                            elif row[col] == 'Available':
+                                                colors.append('background-color: #d4edda; color: #155724')
+                                            else:
+                                                colors.append('')
+                                        else:
+                                            colors.append('')
+                                    return colors
+                                
+                                styled_df = breakdown_df.style.apply(highlight_availability, axis=1)
+                                st.dataframe(styled_df, use_container_width=True)
+                                
+                                # Key insights for this section
+                                sold_out_items = [item for item in item_breakdown if item['availability_status'] == 'Sold Out']
+                                misplaced_only_items = [item for item in item_breakdown if item['availability_status'] == 'Misplaced Only']
+                                
+                                if sold_out_items:
+                                    st.error(f"🚫 Truly Sold Out: {', '.join([item['item_type'] for item in sold_out_items])}")
+                                
+                                if misplaced_only_items:
+                                    st.warning(f"📦 Available but Misplaced: {', '.join([item['item_type'] for item in misplaced_only_items])}")
+                            else:
+                                st.info("No item breakdown available for this section.")
+                else:
+                    st.info("No detailed inventory data available.")
+            
+            with results_tab5:
+                st.subheader("Item Availability Across Store")
+                if not results['item_availability_status'].empty:
+                    st.dataframe(results['item_availability_status'], use_container_width=True)
+                    
+                    # Summary metrics
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    status_counts = results['item_availability_status']['overall_status'].value_counts()
+                    with col1:
+                        st.metric("Available Items", status_counts.get('Available', 0))
+                    with col2:
+                        st.metric("Items with Shortage", status_counts.get('Shortage', 0))
+                    with col3:
+                        st.metric("Sold Out Items", status_counts.get('Sold Out', 0))
+                    with col4:
+                        st.metric("Surplus Items", status_counts.get('Surplus', 0))
+                    
+                    # Critical alerts
+                    sold_out_items = results['item_availability_status'][
+                        results['item_availability_status']['overall_status'] == 'Sold Out'
+                    ]
+                    
+                    if not sold_out_items.empty:
+                        st.error("🚫 Items Completely Sold Out:")
+                        for _, item in sold_out_items.iterrows():
+                            st.error(f"• **{item['item_type']}**: Expected {item['total_expected']}, Found {item['total_detected']}")
+                    
+                    # Misplacement alerts
+                    items_with_misplacement = results['item_availability_status'][
+                        results['item_availability_status']['misplaced'] > 0
+                    ]
+                    
+                    if not items_with_misplacement.empty:
+                        st.warning("📦 Items Found in Wrong Locations:")
+                        for _, item in items_with_misplacement.iterrows():
+                            st.warning(f"• **{item['item_type']}**: {item['misplaced']} items misplaced (Shortage sections: {item['sections_with_shortages']})")
+                
+                else:
+                    st.info("No item availability data available.")
+            
+            with results_tab6:
                 st.subheader("Recommended Tasks")
                 if not results['tasks'].empty:
                     st.dataframe(results['tasks'], use_container_width=True)
@@ -349,7 +453,7 @@ def main():
                 else:
                     st.success("No tasks required!")
             
-            with results_tab5:
+            with results_tab7:
                 st.subheader("Analysis Summary")
                 col1, col2, col3, col4 = st.columns(4)
                 

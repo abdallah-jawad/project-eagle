@@ -16,7 +16,7 @@ class ModelInference:
             weights_path: Path to model weights file (optional, uses default if not provided)
         """
         self.model = None
-        self.weights_path = r"C:\Users\abdal\Desktop\project-eagle\computer-vision\src\demo\weights\pick-instance-seg-v11-1.0.pt"
+        self.weights_path = r"C:\Users\abdal\Desktop\project-eagle\computer-vision\src\demo\weights\pick-instance-seg-v11-1.1.pt"
         self._load_model()
     
     def _load_model(self) -> None:

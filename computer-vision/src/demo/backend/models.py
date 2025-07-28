@@ -203,6 +203,112 @@ class InventoryStatus:
         }
 
 @dataclass
+class DetailedInventoryStatus:
+    """Represents detailed inventory status for a section with item type breakdown"""
+    section_id: str
+    section_name: str
+    expected_items: Dict[str, int]  # {item_type: expected_count}
+    detected_items: Dict[str, int]  # {item_type: detected_count}
+    misplaced_items: Dict[str, int]  # {item_type: count_found_elsewhere}
+    status: str  # Overall section status
+    item_statuses: Dict[str, str]  # {item_type: status}
+    
+    @property
+    def total_expected(self) -> int:
+        """Total expected items in section"""
+        return sum(self.expected_items.values())
+    
+    @property
+    def total_detected(self) -> int:
+        """Total detected items in section"""
+        return sum(self.detected_items.values())
+    
+    @property
+    def total_misplaced(self) -> int:
+        """Total items found elsewhere that belong to this section"""
+        return sum(self.misplaced_items.values())
+    
+    def get_item_breakdown(self) -> List[Dict[str, Any]]:
+        """Get detailed breakdown for each expected item type"""
+        breakdown = []
+        all_item_types = set(self.expected_items.keys()) | set(self.detected_items.keys()) | set(self.misplaced_items.keys())
+        
+        for item_type in all_item_types:
+            expected = self.expected_items.get(item_type, 0)
+            detected = self.detected_items.get(item_type, 0)
+            misplaced = self.misplaced_items.get(item_type, 0)
+            status = self.item_statuses.get(item_type, "Unknown")
+            
+            # Determine if item is truly sold out vs just misplaced
+            available_total = detected + misplaced
+            if expected > 0:
+                if available_total == 0:
+                    availability_status = "Sold Out"
+                elif detected == 0 and misplaced > 0:
+                    availability_status = "Misplaced Only"
+                elif detected < expected and available_total >= expected:
+                    availability_status = "Partially Misplaced"
+                else:
+                    availability_status = "Available"
+            else:
+                availability_status = "Not Expected"
+            
+            breakdown.append({
+                'item_type': item_type,
+                'expected': expected,
+                'detected_in_section': detected,
+                'found_elsewhere': misplaced,
+                'total_available': available_total,
+                'status': status,
+                'availability_status': availability_status,
+                'shortage': max(0, expected - available_total),
+                'surplus': max(0, available_total - expected)
+            })
+        
+        return breakdown
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for DataFrame creation"""
+        return {
+            'section_id': self.section_id,
+            'section_name': self.section_name,
+            'total_expected': self.total_expected,
+            'total_detected': self.total_detected,
+            'total_misplaced': self.total_misplaced,
+            'total_available': self.total_detected + self.total_misplaced,
+            'status': self.status,
+            'item_breakdown': self.get_item_breakdown()
+        }
+
+@dataclass
+class ItemAvailabilityStatus:
+    """Represents the availability status of a specific item type across all sections"""
+    item_type: str
+    total_expected: int
+    total_detected: int
+    correctly_placed: int
+    misplaced: int
+    sections_with_shortages: List[str]
+    sections_with_surplus: List[str]
+    overall_status: str  # "Available", "Shortage", "Surplus", "Sold Out"
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for DataFrame creation"""
+        return {
+            'item_type': self.item_type,
+            'total_expected': self.total_expected,
+            'total_detected': self.total_detected,
+            'correctly_placed': self.correctly_placed,
+            'misplaced': self.misplaced,
+            'total_available': self.total_detected,
+            'shortage': max(0, self.total_expected - self.total_detected),
+            'surplus': max(0, self.total_detected - self.total_expected),
+            'overall_status': self.overall_status,
+            'sections_with_shortages': ', '.join(self.sections_with_shortages),
+            'sections_with_surplus': ', '.join(self.sections_with_surplus)
+        }
+
+@dataclass
 class Task:
     """Represents a task that needs to be completed"""
     task_id: str
@@ -229,6 +335,8 @@ class AnalysisResults:
     detected_items: pd.DataFrame
     misplaced_items: pd.DataFrame
     inventory_status: pd.DataFrame
+    detailed_inventory_status: pd.DataFrame
+    item_availability_status: pd.DataFrame
     tasks: pd.DataFrame
     annotated_image: Optional[Image.Image]
     
@@ -239,6 +347,8 @@ class AnalysisResults:
             detected_items=pd.DataFrame(),
             misplaced_items=pd.DataFrame(),
             inventory_status=pd.DataFrame(),
+            detailed_inventory_status=pd.DataFrame(),
+            item_availability_status=pd.DataFrame(),
             tasks=pd.DataFrame(),
             annotated_image=None
         )
@@ -249,6 +359,8 @@ class AnalysisResults:
             'detected_items': self.detected_items,
             'misplaced_items': self.misplaced_items,
             'inventory_status': self.inventory_status,
+            'detailed_inventory_status': self.detailed_inventory_status,
+            'item_availability_status': self.item_availability_status,
             'tasks': self.tasks,
             'annotated_image': self.annotated_image
         }
