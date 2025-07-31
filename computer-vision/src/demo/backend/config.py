@@ -49,6 +49,7 @@ class PlanogramConfig:
                 name=section_data['name'],
                 expected_items=section_data['expected_items'],
                 expected_count=section_data['expected_count'],
+                expected_visible_count=section_data.get('expected_visible_count', section_data['expected_count']),  # Default to expected_count for backward compatibility
                 position=bbox,
                 priority=section_data.get('priority', 'Medium')
             )
@@ -128,6 +129,7 @@ class PlanogramConfig:
                 'name': 'Cereals - Top Shelf',
                 'expected_items': ['cereal_box', 'granola'],
                 'expected_count': 8,
+                'expected_visible_count': 6,  # Accounting for occlusion
                 'position': BoundingBox(0, 0, 300, 100),
                 'priority': 'Medium'
             },
@@ -136,6 +138,7 @@ class PlanogramConfig:
                 'name': 'Cereals - Middle Shelf',
                 'expected_items': ['cereal_box'],
                 'expected_count': 12,
+                'expected_visible_count': 10,  # Accounting for occlusion
                 'position': BoundingBox(0, 100, 300, 200),
                 'priority': 'High'
             },
@@ -144,6 +147,7 @@ class PlanogramConfig:
                 'name': 'Snacks - Top Shelf',
                 'expected_items': ['chips', 'cookies'],
                 'expected_count': 6,
+                'expected_visible_count': 5,  # Accounting for occlusion
                 'position': BoundingBox(300, 0, 600, 100),
                 'priority': 'Low'
             },
@@ -152,6 +156,7 @@ class PlanogramConfig:
                 'name': 'Beverages Section',
                 'expected_items': ['bottle', 'can'],
                 'expected_count': 15,
+                'expected_visible_count': 12,  # Accounting for occlusion
                 'position': BoundingBox(300, 100, 600, 200),
                 'priority': 'High'
             }
@@ -163,6 +168,7 @@ class PlanogramConfig:
                 name=section_data['name'],
                 expected_items=section_data['expected_items'],
                 expected_count=section_data['expected_count'],
+                expected_visible_count=section_data['expected_visible_count'],
                 position=section_data['position'],
                 priority=section_data['priority']
             )

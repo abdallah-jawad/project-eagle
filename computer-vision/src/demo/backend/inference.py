@@ -16,7 +16,10 @@ class ModelInference:
             weights_path: Path to model weights file (optional, uses default if not provided)
         """
         self.model = None
-        self.weights_path = r"C:\Users\abdal\Desktop\project-eagle\computer-vision\src\demo\weights\pick-instance-seg-v11-1.1.pt"
+        # Use relative path from current file location (cross-platform compatible)
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        demo_dir = os.path.dirname(current_dir)  # Go up one level to demo directory
+        self.weights_path = os.path.join(demo_dir, "weights", "pick-instance-seg-v11-1.3-L.pt")
         self._load_model()
     
     def _load_model(self) -> None:

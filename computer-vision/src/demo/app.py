@@ -215,9 +215,9 @@ def main():
             
             # Display annotated image
             st.subheader("🎯 Detected Items (Annotated)")
-            if results['annotated_image'] is not None:
+            if results.annotated_image is not None:
                 # Create a resized version for display
-                display_image = _resize_image_for_display(results['annotated_image'], max_width=1080)
+                display_image = _resize_image_for_display(results.annotated_image, max_width=1080)
                 
                 # Center the image using columns
                 col1, col2, col3 = st.columns([1, 2, 1])
@@ -225,25 +225,23 @@ def main():
                     st.image(display_image, caption="Detected Items")
             
             # Results in tabs (enhanced with detailed inventory views)
-            results_tab1, results_tab2, results_tab3, results_tab4, results_tab5, results_tab6, results_tab7 = st.tabs([
+            results_tab1, results_tab2, results_tab3, results_tab4, results_tab5 = st.tabs([
                 "📦 All Detections",
                 "❌ Misplaced Items", 
-                "📈 Basic Inventory",
-                "🔍 Detailed Inventory",
-                "📊 Item Availability",
+                "🔍 Inventory",
                 "📋 Tasks",
                 "📄 Summary"
             ])
             
             with results_tab1:
                 st.subheader("All Detected Items")
-                if not results['detected_items'].empty:
-                    st.dataframe(results['detected_items'], use_container_width=True)
-                    st.info(f"Total items detected: {len(results['detected_items'])}")
+                if not results.detected_items.empty:
+                    st.dataframe(results.detected_items, use_container_width=True)
+                    st.info(f"Total items detected: {len(results.detected_items)}")
                     
                     # Detection summary by item type
-                    if 'class_name' in results['detected_items'].columns:
-                        item_counts = results['detected_items']['class_name'].value_counts()
+                    if 'class_name' in results.detected_items.columns:
+                        item_counts = results.detected_items['class_name'].value_counts()
                         st.subheader("Detections by Items")
                         
                         # Create a DataFrame for the item counts table
@@ -261,8 +259,8 @@ def main():
                             st.info("No item types detected.")
                     
                     # Detection summary by section
-                    if 'section_id' in results['detected_items'].columns:
-                        section_counts = results['detected_items']['section_id'].value_counts()
+                    if 'section_id' in results.detected_items.columns:
+                        section_counts = results.detected_items['section_id'].value_counts()
                         st.subheader("Detections by Section")
                         
                         # Create a DataFrame for the table
@@ -284,13 +282,13 @@ def main():
             
             with results_tab2:
                 st.subheader("Misplaced Items")
-                if not results['misplaced_items'].empty:
-                    st.dataframe(results['misplaced_items'], use_container_width=True)
-                    st.error(f"Found {len(results['misplaced_items'])} misplaced items!")
+                if not results.misplaced_items.empty:
+                    st.dataframe(results.misplaced_items, use_container_width=True)
+                    st.error(f"Found {len(results.misplaced_items)} misplaced items!")
                     
                     # Misplaced items by expected section
-                    if 'expected_section' in results['misplaced_items'].columns:
-                        misplaced_counts = results['misplaced_items']['expected_section'].value_counts()
+                    if 'expected_section' in results.misplaced_items.columns:
+                        misplaced_counts = results.misplaced_items['expected_section'].value_counts()
                         st.subheader("Misplaced Items by Target Section")
                         for section, count in misplaced_counts.items():
                             st.warning(f"**{section}**: {count} items need relocation")
@@ -298,50 +296,22 @@ def main():
                     st.success("No misplaced items detected!")
             
             with results_tab3:
-                st.subheader("Basic Inventory Status")
-                if not results['inventory_status'].empty:
-                    st.dataframe(results['inventory_status'], use_container_width=True)
-                    
-                    # Inventory status summary
-                    if 'status' in results['inventory_status'].columns:
-                        status_counts = results['inventory_status']['status'].value_counts()
-                        col1, col2, col3, col4 = st.columns(4)
-                        
-                        with col1:
-                            st.metric("In Stock", status_counts.get('In Stock', 0))
-                        with col2:
-                            st.metric("Low Stock", status_counts.get('Low Stock', 0))
-                        with col3:
-                            st.metric("Out of Stock", status_counts.get('Out of Stock', 0))
-                        with col4:
-                            st.metric("Overstock", status_counts.get('Overstock', 0))
-                    
-                    # Highlight critical issues
-                    out_of_stock = results['inventory_status'][
-                        results['inventory_status']['status'] == 'Out of Stock'
-                    ]
-                    if not out_of_stock.empty:
-                        st.error(f"⚠️ {len(out_of_stock)} sections are out of stock!")
-                        st.dataframe(out_of_stock[['section_name', 'expected_count']], use_container_width=True)
-                else:
-                    st.info("No inventory data available.")
-            
-            with results_tab4:
-                st.subheader("Detailed Inventory by Section")
-                if not results['detailed_inventory_status'].empty:
-                    for _, section_data in results['detailed_inventory_status'].iterrows():
+                st.subheader("Inventory by Section")
+                if not results.detailed_inventory_status.empty:
+                    for _, section_data in results.detailed_inventory_status.iterrows():
                         section_name = section_data['section_name']
-                        section_status = section_data['status']
                         
-                        # Create expandable section
-                        with st.expander(f"🏪 {section_name} - {section_status}", expanded=False):
-                            col1, col2, col3 = st.columns(3)
+                        # Create expandable section (without status since we removed it)
+                        with st.expander(f"🏪 {section_name}", expanded=False):
+                            col1, col2, col3, col4 = st.columns(4)
                             
                             with col1:
                                 st.metric("Expected Total", section_data['total_expected'])
                             with col2:
-                                st.metric("Detected in Section", section_data['total_detected'])
+                                st.metric("Expected Visible", section_data['total_expected_visible'])
                             with col3:
+                                st.metric("Detected in Section", section_data['total_detected'])
+                            with col4:
                                 st.metric("Found Elsewhere", section_data['total_misplaced'])
                             
                             # Item breakdown table
@@ -362,6 +332,10 @@ def main():
                                                 colors.append('background-color: #fff3cd; color: #856404')
                                             elif row[col] == 'Partially Misplaced':
                                                 colors.append('background-color: #cce5ff; color: #004085')
+                                            elif row[col] == 'Low Stock':
+                                                colors.append('background-color: #ffeaa7; color: #6c5ce7')
+                                            elif row[col] == 'Mostly Hidden':
+                                                colors.append('background-color: #ddd6fe; color: #7c3aed')
                                             elif row[col] == 'Available':
                                                 colors.append('background-color: #d4edda; color: #155724')
                                             else:
@@ -376,115 +350,85 @@ def main():
                                 # Key insights for this section
                                 sold_out_items = [item for item in item_breakdown if item['availability_status'] == 'Sold Out']
                                 misplaced_only_items = [item for item in item_breakdown if item['availability_status'] == 'Misplaced Only']
+                                mostly_hidden_items = [item for item in item_breakdown if item['availability_status'] == 'Mostly Hidden']
+                                low_stock_items = [item for item in item_breakdown if item['availability_status'] == 'Low Stock']
                                 
                                 if sold_out_items:
                                     st.error(f"🚫 Truly Sold Out: {', '.join([item['item_type'] for item in sold_out_items])}")
                                 
                                 if misplaced_only_items:
                                     st.warning(f"📦 Available but Misplaced: {', '.join([item['item_type'] for item in misplaced_only_items])}")
+                                
+                                if mostly_hidden_items:
+                                    st.info(f"👁️ Mostly Hidden (behind other items): {', '.join([item['item_type'] for item in mostly_hidden_items])}")
+                                
+                                if low_stock_items:
+                                    st.warning(f"📉 Low Stock: {', '.join([item['item_type'] for item in low_stock_items])}")
                             else:
                                 st.info("No item breakdown available for this section.")
                 else:
                     st.info("No detailed inventory data available.")
             
-            with results_tab5:
-                st.subheader("Item Availability Across Store")
-                if not results['item_availability_status'].empty:
-                    st.dataframe(results['item_availability_status'], use_container_width=True)
-                    
-                    # Summary metrics
-                    col1, col2, col3, col4 = st.columns(4)
-                    
-                    status_counts = results['item_availability_status']['overall_status'].value_counts()
-                    with col1:
-                        st.metric("Available Items", status_counts.get('Available', 0))
-                    with col2:
-                        st.metric("Items with Shortage", status_counts.get('Shortage', 0))
-                    with col3:
-                        st.metric("Sold Out Items", status_counts.get('Sold Out', 0))
-                    with col4:
-                        st.metric("Surplus Items", status_counts.get('Surplus', 0))
-                    
-                    # Critical alerts
-                    sold_out_items = results['item_availability_status'][
-                        results['item_availability_status']['overall_status'] == 'Sold Out'
-                    ]
-                    
-                    if not sold_out_items.empty:
-                        st.error("🚫 Items Completely Sold Out:")
-                        for _, item in sold_out_items.iterrows():
-                            st.error(f"• **{item['item_type']}**: Expected {item['total_expected']}, Found {item['total_detected']}")
-                    
-                    # Misplacement alerts
-                    items_with_misplacement = results['item_availability_status'][
-                        results['item_availability_status']['misplaced'] > 0
-                    ]
-                    
-                    if not items_with_misplacement.empty:
-                        st.warning("📦 Items Found in Wrong Locations:")
-                        for _, item in items_with_misplacement.iterrows():
-                            st.warning(f"• **{item['item_type']}**: {item['misplaced']} items misplaced (Shortage sections: {item['sections_with_shortages']})")
-                
-                else:
-                    st.info("No item availability data available.")
-            
-            with results_tab6:
+            with results_tab4:
                 st.subheader("Recommended Tasks")
-                if not results['tasks'].empty:
-                    st.dataframe(results['tasks'], use_container_width=True)
+                if not results.tasks.empty:
+                    st.dataframe(results.tasks, use_container_width=True)
                     
                     # Task priority and type summary
                     col1, col2 = st.columns(2)
                     
                     with col1:
-                        if 'priority' in results['tasks'].columns:
+                        if 'priority' in results.tasks.columns:
                             st.subheader("By Priority")
-                            priority_counts = results['tasks']['priority'].value_counts()
+                            priority_counts = results.tasks['priority'].value_counts()
                             st.metric("🔴 High Priority", priority_counts.get('High', 0))
                             st.metric("🟡 Medium Priority", priority_counts.get('Medium', 0))
                             st.metric("🟢 Low Priority", priority_counts.get('Low', 0))
                     
                     with col2:
-                        if 'task_type' in results['tasks'].columns:
+                        if 'task_type' in results.tasks.columns:
                             st.subheader("By Type")
-                            type_counts = results['tasks']['task_type'].value_counts()
+                            type_counts = results.tasks['task_type'].value_counts()
                             for task_type, count in type_counts.items():
                                 st.metric(f"{task_type}", count)
                 else:
                     st.success("No tasks required!")
             
-            with results_tab7:
+            with results_tab5:
                 st.subheader("Analysis Summary")
                 col1, col2, col3, col4 = st.columns(4)
                 
                 with col1:
                     st.metric(
                         "Total Detections", 
-                        len(results['detected_items']) if not results['detected_items'].empty else 0
+                        len(results.detected_items) if not results.detected_items.empty else 0
                     )
                 
                 with col2:
                     st.metric(
                         "Misplaced Items", 
-                        len(results['misplaced_items']) if not results['misplaced_items'].empty else 0
+                        len(results.misplaced_items) if not results.misplaced_items.empty else 0
                     )
                 
                 with col3:
                     st.metric(
                         "Pending Tasks", 
-                        len(results['tasks']) if not results['tasks'].empty else 0
+                        len(results.tasks) if not results.tasks.empty else 0
                     )
                 
                 with col4:
-                    out_of_stock_count = len(results['inventory_status'][
-                        results['inventory_status']['status'] == 'Out of Stock'
-                    ]) if not results['inventory_status'].empty else 0
+                    if hasattr(results, 'inventory_status') and not results.inventory_status.empty:
+                        out_of_stock_count = len(results.inventory_status[
+                            results.inventory_status['status'] == 'Out of Stock'
+                        ])
+                    else:
+                        out_of_stock_count = 0
                     st.metric("Out of Stock", out_of_stock_count)
                 
                 # Compliance score
-                if not results['detected_items'].empty:
+                if not results.detected_items.empty:
                     total_expected = len(st.session_state.analyzer.config.sections) if st.session_state.analyzer.config else 1
-                    compliance_score = max(0, (total_expected - len(results['misplaced_items'])) / total_expected * 100)
+                    compliance_score = max(0, (total_expected - len(results.misplaced_items)) / total_expected * 100)
                     st.metric("Compliance Score", f"{compliance_score:.1f}%")
     
     with tab2:

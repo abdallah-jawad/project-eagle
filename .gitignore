@@ -22,6 +22,7 @@ cdk.context.json
 *.swo
 .DS_Store
 Thumbs.db
+/computer-vision/src/demo/weights/
 
 # Environment files
 .env

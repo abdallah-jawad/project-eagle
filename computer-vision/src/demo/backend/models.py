@@ -143,6 +143,7 @@ class PlanogramSection:
     name: str
     expected_items: List[str]  # List of expected class names
     expected_count: int
+    expected_visible_count: int  # How many items we expect to see (considering occlusion)
     position: BoundingBox  # Expected position on shelf
     priority: str = "Medium"  # High, Medium, Low
     
@@ -153,6 +154,7 @@ class PlanogramSection:
             'name': self.name,
             'expected_items': self.expected_items,
             'expected_count': self.expected_count,
+            'expected_visible_count': self.expected_visible_count,
             'position': {
                 'x1': self.position.x1,
                 'y1': self.position.y1,
@@ -208,15 +210,19 @@ class DetailedInventoryStatus:
     section_id: str
     section_name: str
     expected_items: Dict[str, int]  # {item_type: expected_count}
+    expected_visible_items: Dict[str, int]  # {item_type: expected_visible_count}
     detected_items: Dict[str, int]  # {item_type: detected_count}
     misplaced_items: Dict[str, int]  # {item_type: count_found_elsewhere}
-    status: str  # Overall section status
-    item_statuses: Dict[str, str]  # {item_type: status}
     
     @property
     def total_expected(self) -> int:
         """Total expected items in section"""
         return sum(self.expected_items.values())
+    
+    @property
+    def total_expected_visible(self) -> int:
+        """Total expected visible items in section"""
+        return sum(self.expected_visible_items.values())
     
     @property
     def total_detected(self) -> int:
@@ -235,19 +241,22 @@ class DetailedInventoryStatus:
         
         for item_type in all_item_types:
             expected = self.expected_items.get(item_type, 0)
+            expected_visible = self.expected_visible_items.get(item_type, 0)
             detected = self.detected_items.get(item_type, 0)
             misplaced = self.misplaced_items.get(item_type, 0)
-            status = self.item_statuses.get(item_type, "Unknown")
             
-            # Determine if item is truly sold out vs just misplaced
+            # Determine availability status based on new rules
             available_total = detected + misplaced
             if expected > 0:
-                if available_total == 0:
+                if detected == 0 and available_total == 0:
                     availability_status = "Sold Out"
                 elif detected == 0 and misplaced > 0:
                     availability_status = "Misplaced Only"
-                elif detected < expected and available_total >= expected:
-                    availability_status = "Partially Misplaced"
+                elif detected <= expected_visible * 0.5:
+                    if misplaced > 0:
+                        availability_status = "Partially Misplaced"
+                    else:
+                        availability_status = "Low Stock"
                 else:
                     availability_status = "Available"
             else:
@@ -256,13 +265,11 @@ class DetailedInventoryStatus:
             breakdown.append({
                 'item_type': item_type,
                 'expected': expected,
+                'expected_visible': expected_visible,
                 'detected_in_section': detected,
                 'found_elsewhere': misplaced,
-                'total_available': available_total,
-                'status': status,
-                'availability_status': availability_status,
-                'shortage': max(0, expected - available_total),
-                'surplus': max(0, available_total - expected)
+                'total_detected': available_total,
+                'availability_status': availability_status
             })
         
         return breakdown
@@ -273,39 +280,11 @@ class DetailedInventoryStatus:
             'section_id': self.section_id,
             'section_name': self.section_name,
             'total_expected': self.total_expected,
+            'total_expected_visible': self.total_expected_visible,
             'total_detected': self.total_detected,
             'total_misplaced': self.total_misplaced,
-            'total_available': self.total_detected + self.total_misplaced,
-            'status': self.status,
+            'total_detetced': self.total_detected + self.total_misplaced,
             'item_breakdown': self.get_item_breakdown()
-        }
-
-@dataclass
-class ItemAvailabilityStatus:
-    """Represents the availability status of a specific item type across all sections"""
-    item_type: str
-    total_expected: int
-    total_detected: int
-    correctly_placed: int
-    misplaced: int
-    sections_with_shortages: List[str]
-    sections_with_surplus: List[str]
-    overall_status: str  # "Available", "Shortage", "Surplus", "Sold Out"
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for DataFrame creation"""
-        return {
-            'item_type': self.item_type,
-            'total_expected': self.total_expected,
-            'total_detected': self.total_detected,
-            'correctly_placed': self.correctly_placed,
-            'misplaced': self.misplaced,
-            'total_available': self.total_detected,
-            'shortage': max(0, self.total_expected - self.total_detected),
-            'surplus': max(0, self.total_detected - self.total_expected),
-            'overall_status': self.overall_status,
-            'sections_with_shortages': ', '.join(self.sections_with_shortages),
-            'sections_with_surplus': ', '.join(self.sections_with_surplus)
         }
 
 @dataclass
@@ -334,34 +313,28 @@ class AnalysisResults:
     """Contains all results from planogram analysis"""
     detected_items: pd.DataFrame
     misplaced_items: pd.DataFrame
-    inventory_status: pd.DataFrame
     detailed_inventory_status: pd.DataFrame
-    item_availability_status: pd.DataFrame
-    tasks: pd.DataFrame
-    annotated_image: Optional[Image.Image]
-    
+    annotated_image: Optional[Image.Image] = None
+    tasks: Optional[pd.DataFrame] = None
+
     @classmethod
     def create_empty(cls) -> 'AnalysisResults':
         """Create empty results structure"""
         return cls(
             detected_items=pd.DataFrame(),
             misplaced_items=pd.DataFrame(),
-            inventory_status=pd.DataFrame(),
             detailed_inventory_status=pd.DataFrame(),
-            item_availability_status=pd.DataFrame(),
             tasks=pd.DataFrame(),
             annotated_image=None
         )
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization"""
         return {
-            'detected_items': self.detected_items,
-            'misplaced_items': self.misplaced_items,
-            'inventory_status': self.inventory_status,
-            'detailed_inventory_status': self.detailed_inventory_status,
-            'item_availability_status': self.item_availability_status,
-            'tasks': self.tasks,
+            'detected_items': self.detected_items.to_dict('records'),
+            'misplaced_items': self.misplaced_items.to_dict('records'),
+            'detailed_inventory_status': self.detailed_inventory_status.to_dict('records'),
+            'tasks': self.tasks.to_dict('records') if self.tasks is not None else [],
             'annotated_image': self.annotated_image
         }
 
