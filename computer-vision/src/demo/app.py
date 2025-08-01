@@ -146,8 +146,8 @@ def create_planogram_config():
                 st.error(f"❌ Could not create placeholder image: {e}")
                 return
     
-    # Load the base image (only if we haven't already loaded the placeholder)
-    if 'image' not in locals():
+    # Load the base image if we haven't already loaded it (either from original path or placeholder)
+    if image is None:
         try:
             image = Image.open(base_image_path)
             st.success(f"✅ Loaded base image from: {base_image_path}")
