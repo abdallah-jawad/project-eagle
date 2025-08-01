@@ -265,7 +265,8 @@ class SectionDrawer:
             config_data["sections"].append(section_config)
         
         # Save to file
-        output_file = f"config/planograms/{store_id.lower()}_custom.json"
+        from .config import DeploymentConfig
+        output_file = os.path.join(DeploymentConfig.get_config_dir(), f"{store_id.lower()}_custom.json")
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
         
         with open(output_file, 'w') as f:
@@ -333,7 +334,9 @@ def create_section_drawer(image_path: str) -> SectionDrawer:
 
 if __name__ == "__main__":
     # Example usage
-    image_path = "config/images/planogram_demo.jpeg"
+    from .config import DeploymentConfig
+    import os
+    image_path = os.path.join(DeploymentConfig.get_images_dir(), "planogram_demo.jpeg")
     
     if os.path.exists(image_path):
         print("🚀 Starting Section Drawing Tool...")

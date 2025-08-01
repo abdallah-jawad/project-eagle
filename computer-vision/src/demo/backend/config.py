@@ -3,6 +3,49 @@ import os
 from typing import Dict, List, Optional
 from .models import PlanogramSection, BoundingBox
 
+class DeploymentConfig:
+    """Handles deployment-specific configuration with environment variable support"""
+    
+    @staticmethod
+    def get_config_dir() -> str:
+        """Get configuration directory path"""
+        return os.getenv('PLANOGRAM_CONFIG_DIR', 'config/planograms')
+    
+    @staticmethod
+    def get_images_dir() -> str:
+        """Get images directory path"""
+        return os.getenv('PLANOGRAM_IMAGES_DIR', 'config/images')
+    
+    @staticmethod
+    def get_weights_dir() -> str:
+        """Get model weights directory path"""
+        return os.getenv('PLANOGRAM_WEIGHTS_DIR', 'weights')
+    
+    @staticmethod
+    def get_model_weights_file() -> str:
+        """Get model weights file name"""
+        return os.getenv('PLANOGRAM_MODEL_WEIGHTS', 'pick-instance-seg-v11-1.2.pt')
+    
+    @staticmethod
+    def get_temp_dir() -> str:
+        """Get temporary directory path"""
+        return os.getenv('PLANOGRAM_TEMP_DIR', '/tmp' if os.name != 'nt' else os.path.join(os.path.expanduser('~'), 'temp'))
+    
+    @staticmethod
+    def get_model_weights_path() -> str:
+        """Get full path to model weights file"""
+        weights_dir = DeploymentConfig.get_weights_dir()
+        weights_file = DeploymentConfig.get_model_weights_file()
+        
+        # Handle relative paths by making them relative to the demo directory
+        if not os.path.isabs(weights_dir):
+            # Get the demo directory (parent of backend)
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            demo_dir = os.path.dirname(current_dir)
+            weights_dir = os.path.join(demo_dir, weights_dir)
+        
+        return os.path.join(weights_dir, weights_file)
+
 class PlanogramConfig:
     """Manages planogram configurations and settings"""
     
@@ -177,9 +220,14 @@ class PlanogramConfig:
         return config
     
     @staticmethod
-    def list_available_configs(config_dir: str = "config/planograms") -> List[str]:
+    def list_available_configs(config_dir: Optional[str] = None) -> List[str]:
         """List all available configuration files"""
+        if config_dir is None:
+            config_dir = DeploymentConfig.get_config_dir()
+            
         if not os.path.exists(config_dir):
+            # Create the directory if it doesn't exist
+            os.makedirs(config_dir, exist_ok=True)
             return []
         
         config_files = []
@@ -190,8 +238,11 @@ class PlanogramConfig:
         return sorted(config_files)
     
     @staticmethod
-    def get_config_path(config_name: str, config_dir: str = "config/planograms") -> str:
+    def get_config_path(config_name: str, config_dir: Optional[str] = None) -> str:
         """Get full path for a configuration file"""
+        if config_dir is None:
+            config_dir = DeploymentConfig.get_config_dir()
+            
         if not config_name.endswith('.json'):
             config_name += '.json'
         return os.path.join(config_dir, config_name)

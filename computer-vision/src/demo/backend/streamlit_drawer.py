@@ -6,6 +6,7 @@ from PIL import Image, ImageDraw
 import numpy as np
 from typing import List, Dict, Tuple, Optional
 from .coordinate_system import CoordinateSystem
+from .config import DeploymentConfig
 
 # Import the drawable canvas component
 try:
@@ -228,7 +229,7 @@ def generate_planogram_config(
             "version": "1.0",
             "description": description
         },
-        "planogram_image_path": f"config/images/{store_id.lower()}_planogram.jpg",
+        "planogram_image_path": os.path.join(DeploymentConfig.get_images_dir(), f"{store_id.lower()}_planogram.jpg"),
         "sections": []
     }
     
@@ -260,17 +261,17 @@ def save_planogram_config(config_data: Dict, image: Image.Image) -> Tuple[str, s
     store_id = config_data["metadata"]["store_id"]
     
     # Save configuration file
-    config_dir = "config/planograms"
+    config_dir = DeploymentConfig.get_config_dir()
     os.makedirs(config_dir, exist_ok=True)
-    config_file = f"{config_dir}/{store_id.lower()}_custom.json"
+    config_file = os.path.join(config_dir, f"{store_id.lower()}_custom.json")
     
     with open(config_file, 'w') as f:
         json.dump(config_data, f, indent=2)
     
     # Save planogram image
-    image_dir = "config/images"
+    image_dir = DeploymentConfig.get_images_dir()
     os.makedirs(image_dir, exist_ok=True)
-    image_file = f"{image_dir}/{store_id.lower()}_planogram.jpg"
+    image_file = os.path.join(image_dir, f"{store_id.lower()}_planogram.jpg")
     
     image.save(image_file, 'JPEG')
     

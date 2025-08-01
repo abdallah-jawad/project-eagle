@@ -19,8 +19,10 @@ def main():
         print("\nInstall with: pip install matplotlib numpy")
         return 1
     
-    # Default image path
-    image_path = "config/images/planogram_demo.jpeg"
+    # Default image path using deployment config
+    from backend.config import DeploymentConfig
+    import os
+    image_path = os.path.join(DeploymentConfig.get_images_dir(), "planogram_demo.jpeg")
     
     # Check if custom path provided
     if len(sys.argv) > 1:
@@ -32,7 +34,7 @@ def main():
         print("\nUsage:")
         print(f"  python {sys.argv[0]} [image_path]")
         print("\nExample:")
-        print(f"  python {sys.argv[0]} config/images/my_planogram.jpg")
+        print(f"  python {sys.argv[0]} [image_path]")
         return 1
     
     print("🚀 Starting Interactive Section Drawing Tool...")

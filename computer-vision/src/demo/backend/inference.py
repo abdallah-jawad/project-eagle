@@ -3,23 +3,22 @@ import numpy as np
 from PIL import Image
 from typing import List, Dict, Any, Optional, Tuple
 from ultralytics import YOLO
+from .config import DeploymentConfig
 
 class ModelInference:
     """Model inference layer for planogram analysis"""
     
     
-    def __init__(self):
+    def __init__(self, weights_path: Optional[str] = None):
         """
         Initialize model inference layer
         
         Args:
-            weights_path: Path to model weights file (optional, uses default if not provided)
+            weights_path: Path to model weights file (optional, uses deployment config if not provided)
         """
         self.model = None
-        # Use relative path from current file location (cross-platform compatible)
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        demo_dir = os.path.dirname(current_dir)  # Go up one level to demo directory
-        self.weights_path = os.path.join(demo_dir, "weights", "pick-instance-seg-v11-1.2.pt")
+        # Use deployment config for weights path or provided path
+        self.weights_path = weights_path or DeploymentConfig.get_model_weights_path()
         self._load_model()
     
     def _load_model(self) -> None:

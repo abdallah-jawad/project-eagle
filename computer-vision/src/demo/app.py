@@ -4,8 +4,9 @@ from PIL import Image
 import os
 import json
 import tempfile
+import atexit
 from backend.planogram_analyzer import PlanogramAnalyzer
-from backend.config import PlanogramConfig
+from backend.config import PlanogramConfig, DeploymentConfig
 from backend.planogram_annotator import PlanogramAnnotator
 from backend.streamlit_drawer import create_planogram_drawing_interface, generate_planogram_config, save_planogram_config
 
@@ -53,7 +54,11 @@ def create_planogram_config():
         # Save uploaded image temporarily
         image = Image.open(uploaded_image)
         
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as tmp_file:
+        # Create temporary file in deployment-configured temp directory
+        temp_dir = DeploymentConfig.get_temp_dir()
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg', dir=temp_dir) as tmp_file:
             image.save(tmp_file.name, 'JPEG')
             temp_image_path = tmp_file.name
         
@@ -90,8 +95,9 @@ def create_planogram_config():
                     if hasattr(st.session_state, 'temp_image_path'):
                         try:
                             os.unlink(st.session_state.temp_image_path)
-                        except:
-                            pass
+                            delattr(st.session_state, 'temp_image_path')
+                        except Exception as e:
+                            st.warning(f"Could not clean up temporary file: {e}")
                             
                 except Exception as e:
                     st.error(f"Error saving configuration: {e}")

@@ -53,10 +53,31 @@ class PlanogramAnnotator:
         draw = ImageDraw.Draw(annotated)
         
         # Try to load a nice font, fallback to default
-        try:
-            font_large = ImageFont.truetype("Arial.ttf", 24)
-            font_small = ImageFont.truetype("Arial.ttf", 16)
-        except:
+        # Try multiple font options for cross-platform compatibility
+        font_large = None
+        font_small = None
+        
+        # List of fonts to try (common across different OS)
+        font_options = [
+            "arial.ttf",           # Windows
+            "Arial.ttf",           # Windows (case-sensitive systems)
+            "DejaVuSans.ttf",      # Linux
+            "Helvetica.ttc",       # macOS
+            "LiberationSans-Regular.ttf",  # Linux alternative
+            "/System/Library/Fonts/Arial.ttf",  # macOS absolute path
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"  # Linux absolute path
+        ]
+        
+        for font_name in font_options:
+            try:
+                font_large = ImageFont.truetype(font_name, 24)
+                font_small = ImageFont.truetype(font_name, 16)
+                break
+            except (OSError, IOError):
+                continue
+        
+        # If no fonts found, use default
+        if font_large is None:
             try:
                 font_large = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 24)
                 font_small = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 16)
