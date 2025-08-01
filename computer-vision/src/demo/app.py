@@ -93,6 +93,7 @@ def create_planogram_config():
     
     # Try alternative paths for deployment if the primary path doesn't work
     image = None  # Initialize image variable
+    # Try alternative paths for deployment if the primary path doesn't work
     if not os.path.exists(base_image_path):
         alternative_paths = [
             os.path.join(os.getcwd(), "config", "planogram_image", "planogram_base.jpeg"),
@@ -145,8 +146,8 @@ def create_planogram_config():
                 st.error(f"❌ Could not create placeholder image: {e}")
                 return
     
-    # Load the base image if we haven't already loaded it (either from original path or placeholder)
-    if image is None:
+    # Load the base image (only if we haven't already loaded the placeholder)
+    if 'image' not in locals():
         try:
             image = Image.open(base_image_path)
             st.success(f"✅ Loaded base image from: {base_image_path}")
