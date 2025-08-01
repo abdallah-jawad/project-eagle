@@ -5,6 +5,12 @@ import os
 import json
 import tempfile
 import atexit
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
 from backend.planogram_analyzer import PlanogramAnalyzer
 from backend.config import PlanogramConfig, DeploymentConfig
 from backend.planogram_annotator import PlanogramAnnotator
@@ -496,44 +502,423 @@ def main():
                     st.info("No tasks available at this time.")
             
             with results_tab5:
-                st.subheader("Analysis Summary")
-                col1, col2, col3, col4 = st.columns(4)
+                st.subheader("📊 Analysis Summary")
+                
+                # Key metrics row
+                col1, col2, col3, col4, col5 = st.columns(5)
+                
+                total_detections = len(results.detected_items) if not results.detected_items.empty else 0
+                misplaced_count = len(results.misplaced_items) if not results.misplaced_items.empty else 0
+                pending_tasks = len(results.tasks) if not results.tasks.empty else 0
+                
+                # Calculate inventory status counts from detailed breakdown
+                out_of_stock_count = 0
+                low_stock_count = 0
+                overstock_count = 0
+                in_stock_count = 0
+                sold_out_count = 0
+                misplaced_only_count = 0
+                
+                if not results.detailed_inventory_status.empty:
+                    # Extract status information from item breakdown
+                    for _, row in results.detailed_inventory_status.iterrows():
+                        if 'item_breakdown' in row and row['item_breakdown']:
+                            for item in row['item_breakdown']:
+                                status = item.get('availability_status', '')
+                                if status == 'Sold Out':
+                                    sold_out_count += 1
+                                elif status == 'Low Stock':
+                                    low_stock_count += 1
+                                elif status == 'Misplaced Only':
+                                    misplaced_only_count += 1
+                                elif status == 'Available':
+                                    in_stock_count += 1
+                    
+                    out_of_stock_count = sold_out_count  # Use sold out as out of stock metric
+                
+                # Calculate improved compliance score
+                compliance_score = calculate_enhanced_compliance_score(results, st.session_state.analyzer.config)
                 
                 with col1:
-                    st.metric(
-                        "Total Detections", 
-                        len(results.detected_items) if not results.detected_items.empty else 0
-                    )
+                    st.metric("Total Detections", total_detections, delta=None)
                 
                 with col2:
-                    st.metric(
-                        "Misplaced Items", 
-                        len(results.misplaced_items) if not results.misplaced_items.empty else 0
-                    )
+                    st.metric("Misplaced Items", misplaced_count, 
+                             delta=f"{-misplaced_count}" if misplaced_count > 0 else None)
                 
                 with col3:
-                    st.metric(
-                        "Pending Tasks", 
-                        len(results.tasks) if not results.tasks.empty else 0
-                    )
+                    st.metric("Pending Tasks", pending_tasks,
+                             delta=f"{-pending_tasks}" if pending_tasks > 0 else None)
                 
                 with col4:
-                    if hasattr(results, 'inventory_status') and not results.inventory_status.empty:
-                        out_of_stock_count = len(results.inventory_status[
-                            results.inventory_status['status'] == 'Out of Stock'
-                        ])
-                    else:
-                        out_of_stock_count = 0
-                    st.metric("Out of Stock", out_of_stock_count)
+                    st.metric("Out of Stock", out_of_stock_count,
+                             delta=f"{-out_of_stock_count}" if out_of_stock_count > 0 else None)
                 
-                # Compliance score
-                if not results.detected_items.empty:
-                    total_expected = len(st.session_state.analyzer.config.sections) if st.session_state.analyzer.config else 1
-                    compliance_score = max(0, (total_expected - len(results.misplaced_items)) / total_expected * 100)
-                    st.metric("Compliance Score", f"{compliance_score:.1f}%")
+                with col5:
+                    compliance_color = "normal" if compliance_score >= 80 else "inverse"
+                    st.metric("Compliance Score", f"{compliance_score:.1f}%",
+                             delta=f"{compliance_score-70:.1f}%" if compliance_score != 0 else None)
+                
+                st.markdown("---")
+                
+                # Visual analytics section
+                if not results.detected_items.empty or not results.detailed_inventory_status.empty:
+                    
+                    # Create tabs for different analytics views
+                    analytics_tab1, analytics_tab2, analytics_tab3 = st.tabs([
+                        "📈 Inventory Overview", "🔍 Section Performance", "⚠️ Issues & Tasks"
+                    ])
+                    
+                    with analytics_tab1:
+                        create_inventory_overview_charts(results)
+                    
+                    with analytics_tab2:
+                        create_section_performance_charts(results, st.session_state.analyzer.config)
+                    
+                    with analytics_tab3:
+                        create_issues_tasks_charts(results)
+                else:
+                    st.info("📊 No data available for analysis. Please run detection on an image first.")
     
     with tab2:
         create_planogram_config()
+
+def calculate_enhanced_compliance_score(results, config):
+    """
+    Calculate an enhanced compliance score based on multiple factors:
+    - Inventory accuracy (40%)
+    - Placement accuracy (30%)
+    - Stock level health (20%)
+    - Task urgency (10%)
+    """
+    if not config or not config.sections:
+        return 0.0
+    
+    # Base weights
+    weights = {
+        'inventory': 0.10,
+        'placement': 0.55, 
+        'stock_health': 0.30,
+        'task_urgency': 0.05
+    }
+    
+    # Calculate inventory accuracy score based on visible items (accounting for occlusion)
+    total_expected_visible = sum(section.expected_visible_count for section in config.sections)
+    total_detected = len(results.detected_items) if not results.detected_items.empty else 0
+    inventory_score = min(100, (total_detected / total_expected_visible * 100) if total_expected_visible > 0 else 100)
+    
+    # Calculate placement accuracy score
+    misplaced_count = len(results.misplaced_items) if not results.misplaced_items.empty else 0
+    placement_score = max(0, (total_detected - misplaced_count) / total_detected * 100) if total_detected > 0 else 100
+    
+    # Calculate stock health score (penalize out of stock and overstock)
+    stock_health_score = 100
+    if not results.detailed_inventory_status.empty:
+        # Extract status counts from item breakdown
+        sold_out_count = 0
+        low_stock_count = 0
+        total_items = 0
+        
+        for _, row in results.detailed_inventory_status.iterrows():
+            if 'item_breakdown' in row and row['item_breakdown']:
+                for item in row['item_breakdown']:
+                    total_items += 1
+                    status = item.get('availability_status', '')
+                    if status == 'Sold Out':
+                        sold_out_count += 1
+                    elif status == 'Low Stock':
+                        low_stock_count += 1
+        
+        if total_items > 0:
+            out_of_stock_penalty = (sold_out_count / total_items) * 50
+            low_stock_penalty = (low_stock_count / total_items) * 10
+            stock_health_score = max(0, 100 - out_of_stock_penalty - low_stock_penalty)
+    
+    # Calculate task urgency score (penalize high-priority pending tasks)
+    task_urgency_score = 100
+    if not results.tasks.empty:
+        high_priority_tasks = len(results.tasks[results.tasks['priority'] == 'High']) if 'priority' in results.tasks.columns else 0
+        medium_priority_tasks = len(results.tasks[results.tasks['priority'] == 'Medium']) if 'priority' in results.tasks.columns else 0
+        
+        task_urgency_score = max(0, 100 - (high_priority_tasks * 15) - (medium_priority_tasks * 5))
+    
+    # Calculate weighted final score
+    final_score = (
+        inventory_score * weights['inventory'] +
+        placement_score * weights['placement'] +
+        stock_health_score * weights['stock_health'] +
+        task_urgency_score * weights['task_urgency']
+    )
+    
+    return min(100, max(0, final_score))
+
+def create_inventory_overview_charts(results):
+    """Create inventory overview visualizations"""
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.subheader("📦 Inventory Status Distribution")
+        if not results.detailed_inventory_status.empty:
+            # Extract status counts from item breakdown
+            status_counts = {}
+            
+            for _, row in results.detailed_inventory_status.iterrows():
+                if 'item_breakdown' in row and row['item_breakdown']:
+                    for item in row['item_breakdown']:
+                        status = item.get('availability_status', '')
+                        if status:
+                            status_counts[status] = status_counts.get(status, 0) + 1
+            
+            if status_counts:
+                # Define colors for different statuses
+                colors = {
+                    'Available': '#2E8B57',
+                    'Low Stock': '#FFD700', 
+                    'Sold Out': '#DC143C',
+                    'Misplaced Only': '#FF8C00',
+                    'Partially Misplaced': '#4169E1',
+                    'Not Expected': '#808080'
+                }
+                
+                fig_pie = px.pie(
+                    values=list(status_counts.values()),
+                    names=list(status_counts.keys()),
+                    title="Item Availability Status Breakdown",
+                    color=list(status_counts.keys()),
+                    color_discrete_map=colors
+                )
+                fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+                fig_pie.update_layout(height=400)
+                st.plotly_chart(fig_pie, use_container_width=True)
+            else:
+                st.info("No status breakdown available")
+        else:
+            st.info("No inventory status data available")
+    
+    with col2:
+        st.subheader("📊 Stock Levels based on Visible Items")
+        if not results.detected_items.empty:
+            # Bar chart for item counts
+            item_counts = results.detected_items['class_name'].value_counts()
+            
+            fig_bar = px.bar(
+                x=item_counts.index,
+                y=item_counts.values,
+                labels={'x': 'Item Type', 'y': 'Count'},
+                title="Detected Items Count",
+                color=item_counts.values,
+                color_continuous_scale='Viridis'
+            )
+            fig_bar.update_layout(
+                xaxis_tickangle=-45,
+                height=400,
+                showlegend=False
+            )
+            st.plotly_chart(fig_bar, use_container_width=True)
+        else:
+            st.info("No detection data available")
+    
+    with col3:
+        st.subheader("📍 Items per Section")
+        if not results.detected_items.empty and 'section_id' in results.detected_items.columns:
+            section_counts = results.detected_items.groupby('section_id')['class_name'].count()
+            
+            fig_section = px.bar(
+                x=section_counts.index,
+                y=section_counts.values,
+                labels={'x': 'Section ID', 'y': 'Item Count'},
+                title="Items Detected by Section",
+                color=section_counts.values,
+                color_continuous_scale='Blues'
+            )
+            fig_section.update_layout(height=400, showlegend=False)
+            st.plotly_chart(fig_section, use_container_width=True)
+        else:
+            st.info("Section data not available")
+
+
+
+def create_issues_tasks_charts(results):
+    """Create issues and tasks analysis visualizations"""
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("⚠️ Misplaced Items Analysis")
+        if not results.misplaced_items.empty:
+            # Misplaced items by section
+            if 'section_id' in results.misplaced_items.columns:
+                misplaced_by_section = results.misplaced_items['section_id'].value_counts()
+                
+                fig_misplaced = px.bar(
+                    x=misplaced_by_section.index,
+                    y=misplaced_by_section.values,
+                    labels={'x': 'Section ID', 'y': 'Misplaced Count'},
+                    title="Misplaced Items by Section",
+                    color=misplaced_by_section.values,
+                    color_continuous_scale='Reds'
+                )
+                fig_misplaced.update_layout(height=400, showlegend=False)
+                st.plotly_chart(fig_misplaced, use_container_width=True)
+            else:
+                st.info("Section information not available for misplaced items")
+        else:
+            st.success("🎉 No misplaced items detected!")
+    
+    with col2:
+        st.subheader("📋 Task Priority Distribution")
+        if not results.tasks.empty and 'priority' in results.tasks.columns:
+            priority_counts = results.tasks['priority'].value_counts()
+            
+            # Define colors for priorities
+            priority_colors = {
+                'High': '#DC143C',
+                'Medium': '#FFD700',
+                'Low': '#32CD32'
+            }
+            
+            fig_tasks = px.pie(
+                values=priority_counts.values,
+                names=priority_counts.index,
+                title="Task Priority Breakdown",
+                color=priority_counts.index,
+                color_discrete_map=priority_colors
+            )
+            fig_tasks.update_traces(textposition='inside', textinfo='percent+label')
+            fig_tasks.update_layout(height=400)
+            st.plotly_chart(fig_tasks, use_container_width=True)
+        else:
+            st.info("No task data available")
+
+def create_section_performance_charts(results, config):
+    """Create section performance analysis"""
+    if not config or not config.sections:
+        st.info("No planogram configuration available for section analysis")
+        return
+    
+    st.subheader("🔍 Section Performance Analysis (Including Misplaced Items)")
+    
+    # Calculate section performance metrics
+    section_data = []
+    for section in config.sections:
+        detected_in_section = 0
+        misplaced_in_section = 0
+        
+        if not results.detected_items.empty and 'section_id' in results.detected_items.columns:
+            detected_in_section = len(results.detected_items[
+                results.detected_items['section_id'] == section.section_id
+            ])
+        
+        if not results.misplaced_items.empty and 'expected_section' in results.misplaced_items.columns:
+            # Count items that BELONG to this section but were found elsewhere
+            misplaced_in_section = len(results.misplaced_items[
+                results.misplaced_items['expected_section'] == section.section_id
+            ])
+        
+        # Calculate performance score using the same logic as DetailedInventoryStatus
+        expected_visible = section.expected_visible_count
+        available_total = detected_in_section + misplaced_in_section
+        
+        # Determine stock status using exact same logic as DetailedInventoryStatus
+        if detected_in_section == 0 and available_total == 0:
+            stock_status = "Sold Out"
+            stock_score = 0
+        elif detected_in_section == 0 and misplaced_in_section > 0:
+            stock_status = "Misplaced Only" 
+            stock_score = 25  # Items exist but need repositioning
+        elif detected_in_section <= (expected_visible * 0.5):
+            if misplaced_in_section > 0:
+                stock_status = "Partially Misplaced"
+                stock_score = (detected_in_section / expected_visible) * 75  # Scale to 0-75 for partial misplacement
+            else:
+                stock_status = "Low Stock"
+                stock_score = (detected_in_section / expected_visible) * 50  # Scale to 0-50 for low stock
+        else:
+            stock_status = "Available"
+            stock_score = min(100, (detected_in_section / expected_visible) * 100)
+        
+        placement_score = ((detected_in_section - misplaced_in_section) / detected_in_section * 100) if detected_in_section > 0 else 100
+        
+        section_data.append({
+            'Section': section.section_id,
+            'Expected Visible': expected_visible,
+            'Detected': detected_in_section,
+            'Misplaced': misplaced_in_section,
+            'Total Available': available_total,
+            'Stock Status': stock_status,
+            'Stock Score %': stock_score,
+            'Placement %': max(0, placement_score),
+            'Priority': section.priority
+        })
+    
+    df_sections = pd.DataFrame(section_data)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Section stock level comparison
+        fig_stock = px.bar(
+            df_sections,
+            x='Section',
+            y='Stock Score %',
+            title="Section Stock Levels (vs Expected Visible Items)",
+            color='Stock Status',
+            color_discrete_map={
+                'Sold Out': '#DC143C',
+                'Misplaced Only': '#FF8C00', 
+                'Low Stock': '#FFD700',
+                'Partially Misplaced': '#4169E1',
+                'Available': '#32CD32'
+            }
+        )
+        fig_stock.add_hline(y=50, line_dash="dash", annotation_text="Low Stock Threshold: 50% of visible")
+        fig_stock.update_layout(height=400)
+        st.plotly_chart(fig_stock, use_container_width=True)
+    
+    with col2:
+        # Expected Visible vs Detected scatter plot
+        fig_scatter = px.scatter(
+            df_sections,
+            x='Expected Visible',
+            y='Detected',
+            size='Misplaced',
+            color='Stock Status',
+            title="Expected Visible vs Detected Items (size = misplaced)",
+            labels={'Expected Visible': 'Expected Visible Items', 'Detected': 'Detected Items'},
+            color_discrete_map={
+                'Sold Out': '#DC143C',
+                'Misplaced Only': '#FF8C00',
+                'Low Stock': '#FFD700', 
+                'Partially Misplaced': '#4169E1',
+                'Available': '#32CD32'
+            }
+        )
+        # Add diagonal line for optimal stock level
+        max_val = max(df_sections['Expected Visible'].max(), df_sections['Detected'].max())
+        fig_scatter.add_shape(
+            type="line", line=dict(dash="dash", color="gray"),
+            x0=0, y0=0, x1=max_val, y1=max_val
+        )
+        fig_scatter.add_annotation(x=max_val*0.8, y=max_val*0.8, text="Optimal Level", 
+                                  showarrow=False, font=dict(color="gray", size=10))
+        
+        # Add 50% threshold line
+        fig_scatter.add_shape(
+            type="line", line=dict(dash="dash", color="orange"),
+            x0=0, y0=0, x1=max_val, y1=max_val*0.5
+        )
+        fig_scatter.add_annotation(x=max_val*0.8, y=max_val*0.4, text="Low Stock Threshold", 
+                                  showarrow=False, font=dict(color="orange", size=10))
+        fig_scatter.update_layout(height=400)
+        st.plotly_chart(fig_scatter, use_container_width=True)
+    
+    # Section performance table
+    st.subheader("📊 Detailed Section Metrics")
+    styled_df = df_sections.style.format({
+        'Stock Score %': '{:.1f}%',
+        'Placement %': '{:.1f}%'
+    }).background_gradient(subset=['Stock Score %', 'Placement %'], cmap='RdYlGn', vmin=0, vmax=100)
+    
+    st.dataframe(styled_df, use_container_width=True)
 
 def _resize_image_for_display(image: Image.Image, max_width: int = 800) -> Image.Image:
     """
