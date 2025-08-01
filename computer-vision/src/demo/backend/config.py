@@ -332,6 +332,118 @@ class PlanogramConfig:
             print(f"❌ Error creating default config: {e}")
 
     @staticmethod
+    def _create_default_store_005_config() -> None:
+        """Create the default store_005.json configuration file"""
+        config_dir = DeploymentConfig.get_config_dir()
+        config_path = os.path.join(config_dir, "store_005.json")
+        
+        # Only create if it doesn't exist
+        if os.path.exists(config_path):
+            return
+            
+        default_config = {
+            "metadata": {
+                "name": "Pick Demo v2",
+                "store_id": "STORE_005",
+                "created_date": "2024-01-01",
+                "version": "1.0",
+                "description": ""
+            },
+            "planogram_image_path": "config/images/store_005_planogram.jpg",
+            "sections": [
+                {
+                    "section_id": "SECTION_WATER",
+                    "name": "Water",
+                    "expected_items": ["bottled_drinks"],
+                    "expected_count": 4,
+                    "expected_visible_count": 2,
+                    "position": {"x1": 64, "y1": 67, "x2": 283, "y2": 390},
+                    "priority": "Medium"
+                },
+                {
+                    "section_id": "SECTION_CANNED_DRINKS",
+                    "name": "Soda",
+                    "expected_items": ["canned_drinks"],
+                    "expected_count": 6,
+                    "expected_visible_count": 2,
+                    "position": {"x1": 283, "y1": 209, "x2": 459, "y2": 392},
+                    "priority": "Medium"
+                },
+                {
+                    "section_id": "SECTION_LARGE_YOGURT",
+                    "name": "Large Yogurts",
+                    "expected_items": ["yogurt_cups_large"],
+                    "expected_count": 4,
+                    "expected_visible_count": 2,
+                    "position": {"x1": 457, "y1": 209, "x2": 697, "y2": 392},
+                    "priority": "Medium"
+                },
+                {
+                    "section_id": "SECTION_SMALL_YOGURT",
+                    "name": "Small Yogurts",
+                    "expected_items": ["yogurt_cups_small"],
+                    "expected_count": 4,
+                    "expected_visible_count": 2,
+                    "position": {"x1": 696, "y1": 208, "x2": 1006, "y2": 393},
+                    "priority": "Medium"
+                },
+                {
+                    "section_id": "SECTION_SALADS",
+                    "name": "Salads",
+                    "expected_items": ["salads_bowls"],
+                    "expected_count": 6,
+                    "expected_visible_count": 4,
+                    "position": {"x1": 48, "y1": 406, "x2": 640, "y2": 734},
+                    "priority": "High"
+                },
+                {
+                    "section_id": "SECTION_LARGE_PLATES",
+                    "name": "Large Plates",
+                    "expected_items": ["large_plates"],
+                    "expected_count": 6,
+                    "expected_visible_count": 3,
+                    "position": {"x1": 640, "y1": 406, "x2": 1001, "y2": 736},
+                    "priority": "High"
+                },
+                {
+                    "section_id": "SECTION_WRAPS",
+                    "name": "Wraps",
+                    "expected_items": ["wraps"],
+                    "expected_count": 6,
+                    "expected_visible_count": 4,
+                    "position": {"x1": 76, "y1": 764, "x2": 424, "y2": 1080},
+                    "priority": "Medium"
+                },
+                {
+                    "section_id": "SECTION_SANDWICHES",
+                    "name": "Sandwiches",
+                    "expected_items": ["sandwiches"],
+                    "expected_count": 4,
+                    "expected_visible_count": 2,
+                    "position": {"x1": 424, "y1": 764, "x2": 624, "y2": 1081},
+                    "priority": "High"
+                },
+                {
+                    "section_id": "SECTION_SMALL_PLATES",
+                    "name": "Small Plates",
+                    "expected_items": ["small_plates"],
+                    "expected_count": 6,
+                    "expected_visible_count": 3,
+                    "position": {"x1": 622, "y1": 764, "x2": 968, "y2": 1084},
+                    "priority": "High"
+                }
+            ]
+        }
+        
+        try:
+            os.makedirs(config_dir, exist_ok=True)
+            with open(config_path, 'w') as f:
+                json.dump(default_config, f, indent=2)
+            print(f"✅ Created default store_005.json configuration")
+        except Exception as e:
+            print(f"❌ Error creating default config: {e}")
+
+    @staticmethod
     def list_available_configs(config_dir: Optional[str] = None) -> List[str]:
         """List all available configuration files"""
         if config_dir is None:
@@ -341,8 +453,9 @@ class PlanogramConfig:
             # Create the directory if it doesn't exist
             os.makedirs(config_dir, exist_ok=True)
         
-        # Ensure we have at least the default store_004.json
+        # Ensure we have at least the default store_004.json and store_005.json
         PlanogramConfig._create_default_store_004_config()
+        PlanogramConfig._create_default_store_005_config()
         
         try:
             config_files = []
