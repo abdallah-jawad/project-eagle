@@ -224,18 +224,31 @@ class PlanogramConfig:
         """List all available configuration files"""
         if config_dir is None:
             config_dir = DeploymentConfig.get_config_dir()
-            
+        
         if not os.path.exists(config_dir):
             # Create the directory if it doesn't exist
             os.makedirs(config_dir, exist_ok=True)
             return []
         
-        config_files = []
-        for filename in os.listdir(config_dir):
-            if filename.endswith('.json'):
-                config_files.append(filename)
-        
-        return sorted(config_files)
+        try:
+            config_files = []
+            for filename in os.listdir(config_dir):
+                if filename.endswith('.json'):
+                    full_path = os.path.join(config_dir, filename)
+                    # Verify the file is readable
+                    try:
+                        with open(full_path, 'r') as f:
+                            json.load(f)
+                        config_files.append(filename)
+                    except Exception as e:
+                        # Log error but continue
+                        print(f"Warning: Invalid config file {filename}: {e}")
+            
+            return sorted(config_files)
+            
+        except Exception as e:
+            print(f"Error reading config directory {config_dir}: {e}")
+            return []
     
     @staticmethod
     def get_config_path(config_name: str, config_dir: Optional[str] = None) -> str:
