@@ -740,33 +740,288 @@ def create_inventory_overview_charts(results):
 
 def create_issues_tasks_charts(results):
     """Create issues and tasks analysis visualizations"""
-    col1, col2 = st.columns(2)
     
-    with col1:
-        st.subheader("⚠️ Misplaced Items Analysis")
-        if not results.misplaced_items.empty:
-            # Misplaced items by section
-            if 'section_id' in results.misplaced_items.columns:
-                misplaced_by_section = results.misplaced_items['section_id'].value_counts()
+    if not results.misplaced_items.empty:
+        st.subheader("⚠️ Detailed Misplaced Items Analysis")
+        
+        # Create tabs for different misplacement analyses
+        misplaced_tab1, misplaced_tab2, misplaced_tab3, misplaced_tab4 = st.tabs([
+            "📊 Overview", "🔄 Movement Flow", "📦 Item Types", "🎯 Priority Actions"
+        ])
+        
+        with misplaced_tab1:
+            # Overview with multiple charts
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Misplaced items by their expected (correct) section
+                if 'expected_section' in results.misplaced_items.columns:
+                    misplaced_by_expected_section = results.misplaced_items['expected_section'].value_counts()
+                    
+                    fig_expected = px.bar(
+                        x=misplaced_by_expected_section.index,
+                        y=misplaced_by_expected_section.values,
+                        labels={'x': 'Expected Section', 'y': 'Misplaced Count'},
+                        title="Items That Should Be In Each Section",
+                        color=misplaced_by_expected_section.values,
+                        color_continuous_scale='Reds'
+                    )
+                    fig_expected.update_layout(height=350, showlegend=False)
+                    st.plotly_chart(fig_expected, use_container_width=True)
+            
+            with col2:
+                # Misplaced items by where they were actually found
+                if 'actual_section' in results.misplaced_items.columns:
+                    misplaced_by_actual_section = results.misplaced_items['actual_section'].value_counts()
+                    
+                    fig_actual = px.bar(
+                        x=misplaced_by_actual_section.index,
+                        y=misplaced_by_actual_section.values,
+                        labels={'x': 'Actual Section', 'y': 'Foreign Items Count'},
+                        title="Foreign Items Found In Each Section",
+                        color=misplaced_by_actual_section.values,
+                        color_continuous_scale='Oranges'
+                    )
+                    fig_actual.update_layout(height=350, showlegend=False)
+                    st.plotly_chart(fig_actual, use_container_width=True)
+            
+            # Summary metrics
+            st.markdown("---")
+            col1, col2, col3, col4 = st.columns(4)
+            
+            total_misplaced = len(results.misplaced_items)
+            avg_confidence = results.misplaced_items['confidence'].mean() if 'confidence' in results.misplaced_items.columns else 0
+            unique_sections_affected = results.misplaced_items['expected_section'].nunique() if 'expected_section' in results.misplaced_items.columns else 0
+            unique_item_types = results.misplaced_items['item_class'].nunique() if 'item_class' in results.misplaced_items.columns else 0
+            
+            with col1:
+                st.metric("Total Misplaced", total_misplaced)
+            with col2:
+                st.metric("Avg Confidence", f"{avg_confidence:.2f}" if avg_confidence > 0 else "N/A")
+            with col3:
+                st.metric("Sections Affected", unique_sections_affected)
+            with col4:
+                st.metric("Item Types", unique_item_types)
+        
+        with misplaced_tab2:
+            # Movement flow analysis
+            st.subheader("🔄 Item Movement Flow")
+            
+            if 'actual_section' in results.misplaced_items.columns and 'expected_section' in results.misplaced_items.columns:
+                # Create movement flow data
+                movement_data = []
+                for _, row in results.misplaced_items.iterrows():
+                    movement_data.append({
+                        'From': row['actual_section'],
+                        'To': row['expected_section'],
+                        'Item': row['item_class'] if 'item_class' in row else 'Unknown',
+                        'Confidence': row['confidence'] if 'confidence' in row else 0
+                    })
                 
-                fig_misplaced = px.bar(
-                    x=misplaced_by_section.index,
-                    y=misplaced_by_section.values,
-                    labels={'x': 'Section ID', 'y': 'Misplaced Count'},
-                    title="Misplaced Items by Section",
-                    color=misplaced_by_section.values,
-                    color_continuous_scale='Reds'
-                )
-                fig_misplaced.update_layout(height=400, showlegend=False)
-                st.plotly_chart(fig_misplaced, use_container_width=True)
+                movement_df = pd.DataFrame(movement_data)
+                
+                # Group by movement pattern
+                movement_summary = movement_df.groupby(['From', 'To']).agg({
+                    'Item': 'count',
+                    'Confidence': 'mean'
+                }).rename(columns={'Item': 'Count'}).reset_index()
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    # Movement flow chart
+                    fig_flow = px.bar(
+                        movement_summary.head(10),  # Show top 10 movements
+                        x='Count',
+                        y=[f"{row['From']} → {row['To']}" for _, row in movement_summary.head(10).iterrows()],
+                        orientation='h',
+                        title="Top Movement Patterns (From → To)",
+                        color='Count',
+                        color_continuous_scale='Reds'
+                    )
+                    fig_flow.update_layout(height=400)
+                    st.plotly_chart(fig_flow, use_container_width=True)
+                
+                with col2:
+                    # Confidence distribution of movements
+                    fig_conf = px.histogram(
+                        movement_df,
+                        x='Confidence',
+                        nbins=20,
+                        title="Confidence Distribution of Misplacements",
+                        color_discrete_sequence=['#ff6b6b']
+                    )
+                    fig_conf.update_layout(height=400)
+                    st.plotly_chart(fig_conf, use_container_width=True)
             else:
-                st.info("Section information not available for misplaced items")
-        else:
-            st.success("🎉 No misplaced items detected!")
+                st.info("Movement flow data not available - missing section information")
+        
+        with misplaced_tab3:
+            # Item type analysis
+            st.subheader("📦 Misplaced Items by Type")
+            
+            if 'item_class' in results.misplaced_items.columns:
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    # Item type distribution
+                    item_counts = results.misplaced_items['item_class'].value_counts()
+                    
+                    fig_items = px.pie(
+                        values=item_counts.values,
+                        names=item_counts.index,
+                        title="Misplaced Items by Type",
+                        color_discrete_sequence=px.colors.qualitative.Set3
+                    )
+                    fig_items.update_traces(textposition='inside', textinfo='percent+label')
+                    fig_items.update_layout(height=400)
+                    st.plotly_chart(fig_items, use_container_width=True)
+                
+                with col2:
+                    # Item type vs confidence
+                    if 'confidence' in results.misplaced_items.columns:
+                        fig_conf_item = px.box(
+                            results.misplaced_items,
+                            x='item_class',
+                            y='confidence',
+                            title="Detection Confidence by Item Type",
+                            color='item_class'
+                        )
+                        fig_conf_item.update_layout(
+                            height=400,
+                            xaxis_tickangle=-45,
+                            showlegend=False
+                        )
+                        st.plotly_chart(fig_conf_item, use_container_width=True)
+                
+                # Detailed breakdown table
+                st.subheader("📋 Detailed Item Type Breakdown")
+                
+                if 'expected_section' in results.misplaced_items.columns and 'actual_section' in results.misplaced_items.columns:
+                    detailed_breakdown = results.misplaced_items.groupby('item_class').agg({
+                        'confidence': ['count', 'mean', 'min', 'max'],
+                        'expected_section': lambda x: len(x.unique()),
+                        'actual_section': lambda x: len(x.unique())
+                    }).round(3)
+                    
+                    # Flatten column names
+                    detailed_breakdown.columns = [
+                        'Total Count', 'Avg Confidence', 'Min Confidence', 'Max Confidence',
+                        'Expected Sections', 'Found In Sections'
+                    ]
+                    
+                    st.dataframe(detailed_breakdown, use_container_width=True)
+            else:
+                st.info("Item class information not available")
+        
+        with misplaced_tab4:
+            # Priority actions
+            st.subheader("🎯 Priority Actions Required")
+            
+            # Create prioritized action list
+            action_items = []
+            
+            if 'confidence' in results.misplaced_items.columns and 'expected_section' in results.misplaced_items.columns:
+                for _, row in results.misplaced_items.iterrows():
+                    confidence = row['confidence']
+                    item_class = row['item_class'] if 'item_class' in row else 'Unknown'
+                    expected_section = row['expected_section']
+                    actual_section = row['actual_section'] if 'actual_section' in row else 'Unknown'
+                    
+                    # Determine priority based on confidence and item importance
+                    if confidence >= 0.8:
+                        priority = "🔴 High"
+                        priority_score = 3
+                    elif confidence >= 0.6:
+                        priority = "🟡 Medium" 
+                        priority_score = 2
+                    else:
+                        priority = "🟢 Low"
+                        priority_score = 1
+                    
+                    action_items.append({
+                        'Priority': priority,
+                        'Priority Score': priority_score,
+                        'Item Type': item_class,
+                        'Action': f"Move from {actual_section} to {expected_section}",
+                        'Confidence': f"{confidence:.2f}",
+                        'Expected Section': expected_section,
+                        'Current Section': actual_section
+                    })
+                
+                # Sort by priority score and confidence
+                action_df = pd.DataFrame(action_items).sort_values(['Priority Score', 'Confidence'], ascending=[False, False])
+                
+                # Display priority actions
+                col1, col2 = st.columns([2, 1])
+                
+                with col1:
+                    st.dataframe(
+                        action_df[['Priority', 'Item Type', 'Action', 'Confidence']],
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                
+                with col2:
+                    # Priority distribution
+                    priority_counts = action_df['Priority'].value_counts()
+                    
+                    fig_priority = px.pie(
+                        values=priority_counts.values,
+                        names=priority_counts.index,
+                        title="Action Priority Distribution",
+                        color=priority_counts.index,
+                        color_discrete_map={
+                            '🔴 High': '#DC143C',
+                            '🟡 Medium': '#FFD700',
+                            '🟢 Low': '#32CD32'
+                        }
+                    )
+                    fig_priority.update_traces(textposition='inside', textinfo='percent+label')
+                    fig_priority.update_layout(height=300)
+                    st.plotly_chart(fig_priority, use_container_width=True)
+                
+                # Action summary
+                st.markdown("---")
+                st.subheader("📝 Action Summary")
+                
+                high_priority = len(action_df[action_df['Priority'] == '🔴 High'])
+                medium_priority = len(action_df[action_df['Priority'] == '🟡 Medium'])
+                low_priority = len(action_df[action_df['Priority'] == '🟢 Low'])
+                
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    if high_priority > 0:
+                        st.error(f"🔴 **{high_priority} High Priority Actions**")
+                        st.write("Immediate attention required")
+                    else:
+                        st.success("✅ No high priority actions")
+                
+                with col2:
+                    if medium_priority > 0:
+                        st.warning(f"🟡 **{medium_priority} Medium Priority Actions**")
+                        st.write("Address when possible")
+                    else:
+                        st.info("No medium priority actions")
+                
+                with col3:
+                    if low_priority > 0:
+                        st.info(f"🟢 **{low_priority} Low Priority Actions**")
+                        st.write("Lower confidence detections")
+                    else:
+                        st.info("No low priority actions")
+    else:
+        st.success("🎉 No misplaced items detected!")
     
-    with col2:
-        st.subheader("📋 Task Priority Distribution")
-        if not results.tasks.empty and 'priority' in results.tasks.columns:
+    # Task Priority Distribution (moved to separate section)
+    st.markdown("---")
+    st.subheader("📋 Task Priority Distribution")
+    
+    if not results.tasks.empty and 'priority' in results.tasks.columns:
+        col1, col2 = st.columns(2)
+        
+        with col1:
             priority_counts = results.tasks['priority'].value_counts()
             
             # Define colors for priorities
@@ -786,8 +1041,26 @@ def create_issues_tasks_charts(results):
             fig_tasks.update_traces(textposition='inside', textinfo='percent+label')
             fig_tasks.update_layout(height=400)
             st.plotly_chart(fig_tasks, use_container_width=True)
-        else:
-            st.info("No task data available")
+        
+        with col2:
+            # Task details if available
+            if 'task_type' in results.tasks.columns:
+                task_type_counts = results.tasks['task_type'].value_counts()
+                
+                fig_task_types = px.bar(
+                    x=task_type_counts.values,
+                    y=task_type_counts.index,
+                    orientation='h',
+                    title="Tasks by Type",
+                    color=task_type_counts.values,
+                    color_continuous_scale='Blues'
+                )
+                fig_task_types.update_layout(height=400)
+                st.plotly_chart(fig_task_types, use_container_width=True)
+            else:
+                st.info("Task type information not available")
+    else:
+        st.info("No task data available")
 
 def create_section_performance_charts(results, config):
     """Create section performance analysis"""
@@ -795,18 +1068,31 @@ def create_section_performance_charts(results, config):
         st.info("No planogram configuration available for section analysis")
         return
     
-    st.subheader("🔍 Section Performance Analysis (Including Misplaced Items)")
+    st.subheader("🔍 Section Performance Analysis (Accurate Stock Assessment)")
+    st.info("📍 **Key Insight**: Stock scores now only count items that actually belong in each section, excluding foreign items that may have been detected but don't belong there.")
     
     # Calculate section performance metrics
     section_data = []
     for section in config.sections:
         detected_in_section = 0
         misplaced_in_section = 0
+        correctly_placed_in_section = 0
+        foreign_items_in_section = 0
         
         if not results.detected_items.empty and 'section_id' in results.detected_items.columns:
+            # All items detected in this section (including foreign items)
             detected_in_section = len(results.detected_items[
                 results.detected_items['section_id'] == section.section_id
             ])
+            
+            # Count foreign items: items detected in this section but belonging elsewhere
+            if not results.misplaced_items.empty and 'actual_section' in results.misplaced_items.columns:
+                foreign_items_in_section = len(results.misplaced_items[
+                    results.misplaced_items['actual_section'] == section.section_id
+                ])
+            
+            # Calculate correctly placed items: detected items minus foreign items
+            correctly_placed_in_section = max(0, detected_in_section - foreign_items_in_section)
         
         if not results.misplaced_items.empty and 'expected_section' in results.misplaced_items.columns:
             # Count items that BELONG to this section but were found elsewhere
@@ -814,35 +1100,37 @@ def create_section_performance_charts(results, config):
                 results.misplaced_items['expected_section'] == section.section_id
             ])
         
-        # Calculate performance score using the same logic as DetailedInventoryStatus
+        # Calculate performance score using correctly placed items (not including foreign items)
         expected_visible = section.expected_visible_count
-        available_total = detected_in_section + misplaced_in_section
+        available_total = correctly_placed_in_section + misplaced_in_section
         
-        # Determine stock status using exact same logic as DetailedInventoryStatus
-        if detected_in_section == 0 and available_total == 0:
+        # Determine stock status using exact same logic as DetailedInventoryStatus but with correct items only
+        if correctly_placed_in_section == 0 and available_total == 0:
             stock_status = "Sold Out"
             stock_score = 0
-        elif detected_in_section == 0 and misplaced_in_section > 0:
+        elif correctly_placed_in_section == 0 and misplaced_in_section > 0:
             stock_status = "Misplaced Only" 
             stock_score = 25  # Items exist but need repositioning
-        elif detected_in_section <= (expected_visible * 0.5):
+        elif correctly_placed_in_section <= (expected_visible * 0.5):
             if misplaced_in_section > 0:
                 stock_status = "Partially Misplaced"
-                stock_score = (detected_in_section / expected_visible) * 75  # Scale to 0-75 for partial misplacement
+                stock_score = (correctly_placed_in_section / expected_visible) * 75  # Scale to 0-75 for partial misplacement
             else:
                 stock_status = "Low Stock"
-                stock_score = (detected_in_section / expected_visible) * 50  # Scale to 0-50 for low stock
+                stock_score = (correctly_placed_in_section / expected_visible) * 50  # Scale to 0-50 for low stock
         else:
             stock_status = "Available"
-            stock_score = min(100, (detected_in_section / expected_visible) * 100)
+            stock_score = min(100, (correctly_placed_in_section / expected_visible) * 100)
         
-        placement_score = ((detected_in_section - misplaced_in_section) / detected_in_section * 100) if detected_in_section > 0 else 100
+        # Calculate placement accuracy: what % of detected items in this section are correctly placed
+        placement_score = (correctly_placed_in_section / detected_in_section * 100) if detected_in_section > 0 else 100
         
         section_data.append({
             'Section': section.section_id,
             'Expected Visible': expected_visible,
-            'Detected': detected_in_section,
-            'Misplaced': misplaced_in_section,
+            'Correctly Placed': correctly_placed_in_section,
+            'Found Elsewhere': misplaced_in_section,
+            'Foreign Items': foreign_items_in_section,
             'Total Available': available_total,
             'Stock Status': stock_status,
             'Stock Score %': stock_score,
@@ -875,15 +1163,15 @@ def create_section_performance_charts(results, config):
         st.plotly_chart(fig_stock, use_container_width=True)
     
     with col2:
-        # Expected Visible vs Detected scatter plot
+        # Expected Visible vs Correctly Placed scatter plot
         fig_scatter = px.scatter(
             df_sections,
             x='Expected Visible',
-            y='Detected',
-            size='Misplaced',
+            y='Correctly Placed',
+            size='Found Elsewhere',
             color='Stock Status',
-            title="Expected Visible vs Detected Items (size = misplaced)",
-            labels={'Expected Visible': 'Expected Visible Items', 'Detected': 'Detected Items'},
+            title="Expected Visible vs Correctly Placed Items (size = found elsewhere)",
+            labels={'Expected Visible': 'Expected Visible Items', 'Correctly Placed': 'Correctly Placed Items'},
             color_discrete_map={
                 'Sold Out': '#DC143C',
                 'Misplaced Only': '#FF8C00',
@@ -893,7 +1181,7 @@ def create_section_performance_charts(results, config):
             }
         )
         # Add diagonal line for optimal stock level
-        max_val = max(df_sections['Expected Visible'].max(), df_sections['Detected'].max())
+        max_val = max(df_sections['Expected Visible'].max(), df_sections['Correctly Placed'].max())
         fig_scatter.add_shape(
             type="line", line=dict(dash="dash", color="gray"),
             x0=0, y0=0, x1=max_val, y1=max_val
@@ -919,6 +1207,22 @@ def create_section_performance_charts(results, config):
     }).background_gradient(subset=['Stock Score %', 'Placement %'], cmap='RdYlGn', vmin=0, vmax=100)
     
     st.dataframe(styled_df, use_container_width=True)
+    
+    # Add column explanations
+    with st.expander("📋 Column Explanations"):
+        st.write("""
+        **Correctly Placed**: Items detected in this section that actually belong here
+        
+        **Found Elsewhere**: Items that belong to this section but were detected in other sections
+        
+        **Foreign Items**: Items detected in this section that actually belong elsewhere
+        
+        **Total Available**: Correctly Placed + Found Elsewhere (all items belonging to this section)
+        
+        **Stock Score**: Based only on correctly placed items vs expected visible items
+        
+        **Placement %**: Percentage of detected items in this section that are correctly placed
+        """)
 
 def _resize_image_for_display(image: Image.Image, max_width: int = 800) -> Image.Image:
     """
