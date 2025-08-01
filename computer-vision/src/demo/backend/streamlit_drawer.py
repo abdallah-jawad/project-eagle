@@ -21,8 +21,20 @@ class StreamlitPlanogramDrawer:
     Streamlit-compatible planogram section drawer using streamlit-drawable-canvas
     """
     
-    def __init__(self, image: Image.Image):
-        self.image = image
+    def __init__(self, image: Image.Image, image_path: str = None):
+        # If image_path is provided and exists, load the image from the path
+        # This ensures we have a fresh PIL Image object for deployment scenarios
+        if image_path and os.path.exists(image_path):
+            try:
+                self.image = Image.open(image_path)
+                st.info(f"🔍 Loaded image from path: {image_path}")
+            except Exception as e:
+                st.warning(f"⚠️ Could not load image from path {image_path}: {e}")
+                self.image = image  # Fallback to original image
+        else:
+            self.image = image
+            
+        self.image_path = image_path
         self.sections = []
         
     def draw_sections_interactive(self) -> List[Dict]:
@@ -56,11 +68,21 @@ class StreamlitPlanogramDrawer:
         col1, col2, col3 = st.columns([1, 4, 1])  # Made middle column bigger
         with col2:
             # Create the interactive canvas
+            # Always use the PIL Image object - streamlit-drawable-canvas expects this
+            background_image = self.image
+            
+            # Debug info for deployment troubleshooting
+            if self.image_path:
+                st.info(f"🔍 Image loaded from path: {self.image_path}")
+                st.info(f"🔍 File exists: {os.path.exists(self.image_path)}")
+            else:
+                st.info("🔍 Using original PIL Image object")
+            
             canvas_result = st_canvas(
                 fill_color=fill_color,
                 stroke_width=stroke_width,
                 stroke_color=stroke_color,
-                background_image=self.image,
+                background_image=background_image,
                 update_streamlit=True,
                 height=canvas_height,
                 width=canvas_width,
@@ -103,13 +125,14 @@ class StreamlitPlanogramDrawer:
         
         return drawn_sections
 
-def create_planogram_drawing_interface(image: Image.Image, available_items: List[str]) -> List[Dict]:
+def create_planogram_drawing_interface(image: Image.Image, available_items: List[str], image_path: str = None) -> List[Dict]:
     """
     Create a complete planogram drawing interface with interactive canvas
     
     Args:
         image: The planogram image to draw on
         available_items: List of available item types
+        image_path: Optional file path to the image (preferred for canvas)
         
     Returns:
         List of section configurations
@@ -117,7 +140,7 @@ def create_planogram_drawing_interface(image: Image.Image, available_items: List
     if not CANVAS_AVAILABLE:
         return []
     
-    drawer = StreamlitPlanogramDrawer(image)
+    drawer = StreamlitPlanogramDrawer(image, image_path)
     
     # Get drawn sections from interactive canvas
     drawn_sections = drawer.draw_sections_interactive()

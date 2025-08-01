@@ -64,15 +64,29 @@ def create_planogram_config():
         temp_dir = DeploymentConfig.get_temp_dir()
         os.makedirs(temp_dir, exist_ok=True)
         
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg', dir=temp_dir) as tmp_file:
-            image.save(tmp_file.name, 'JPEG')
-            temp_image_path = tmp_file.name
+        # Debug temp directory info
+        st.info(f"🔍 Temp directory: {temp_dir}")
+        st.info(f"🔍 Temp directory exists: {os.path.exists(temp_dir)}")
+        st.info(f"🔍 Temp directory writable: {os.access(temp_dir, os.W_OK) if os.path.exists(temp_dir) else False}")
+        
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg', dir=temp_dir) as tmp_file:
+                image.save(tmp_file.name, 'JPEG')
+                temp_image_path = tmp_file.name
+                st.info(f"🔍 Created temp file: {temp_image_path}")
+        except Exception as e:
+            st.warning(f"⚠️ Could not create temp file in {temp_dir}: {e}")
+            # Fallback: use system temp directory
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as tmp_file:
+                image.save(tmp_file.name, 'JPEG')
+                temp_image_path = tmp_file.name
+                st.info(f"🔍 Created fallback temp file: {temp_image_path}")
         
         st.session_state.temp_image_path = temp_image_path
         st.session_state.uploaded_image = image
         
         # Use the drawing interface
-        sections = create_planogram_drawing_interface(image, AVAILABLE_ITEMS)
+        sections = create_planogram_drawing_interface(image, AVAILABLE_ITEMS, temp_image_path)
         
         # Configuration generation
         if sections:
@@ -746,7 +760,7 @@ def create_issues_tasks_charts(results):
         
         # Create tabs for different misplacement analyses
         misplaced_tab1, misplaced_tab2, misplaced_tab3, misplaced_tab4 = st.tabs([
-            "📊 Overview", "🔄 Movement Flow", "📦 Item Types", "🎯 Priority Actions"
+            "📊 Overview", "🔄 Movement Flow", "📦 Item Types", "🎯 Actions by Confidence"
         ])
         
         with misplaced_tab1:
@@ -916,7 +930,11 @@ def create_issues_tasks_charts(results):
         
         with misplaced_tab4:
             # Priority actions
-            st.subheader("🎯 Priority Actions Required")
+            st.subheader("🎯 Actions by Confidence Level")
+            st.info("💡 **Confidence levels indicate how reliable the misplacement detection is**:\n"
+                   "- 🔴 **High (≥80%)**: Very reliable detections, act immediately\n"
+                   "- 🟡 **Medium (60-80%)**: Moderately reliable, verify and act\n"
+                   "- 🟢 **Low (<60%)**: Lower reliability, double-check before acting")
             
             # Create prioritized action list
             action_items = []
@@ -928,20 +946,20 @@ def create_issues_tasks_charts(results):
                     expected_section = row['expected_section']
                     actual_section = row['actual_section'] if 'actual_section' in row else 'Unknown'
                     
-                    # Determine priority based on confidence and item importance
+                    # Determine confidence level based on detection confidence
                     if confidence >= 0.8:
-                        priority = "🔴 High"
-                        priority_score = 3
+                        confidence_level = "🔴 High Confidence"
+                        confidence_score = 3
                     elif confidence >= 0.6:
-                        priority = "🟡 Medium" 
-                        priority_score = 2
+                        confidence_level = "🟡 Medium Confidence" 
+                        confidence_score = 2
                     else:
-                        priority = "🟢 Low"
-                        priority_score = 1
+                        confidence_level = "🟢 Low Confidence"
+                        confidence_score = 1
                     
                     action_items.append({
-                        'Priority': priority,
-                        'Priority Score': priority_score,
+                        'Confidence Level': confidence_level,
+                        'Confidence Score': confidence_score,
                         'Item Type': item_class,
                         'Action': f"Move from {actual_section} to {expected_section}",
                         'Confidence': f"{confidence:.2f}",
@@ -949,118 +967,97 @@ def create_issues_tasks_charts(results):
                         'Current Section': actual_section
                     })
                 
-                # Sort by priority score and confidence
-                action_df = pd.DataFrame(action_items).sort_values(['Priority Score', 'Confidence'], ascending=[False, False])
+                # Sort by confidence score and confidence
+                action_df = pd.DataFrame(action_items).sort_values(['Confidence Score', 'Confidence'], ascending=[False, False])
                 
-                # Display priority actions
-                col1, col2 = st.columns([2, 1])
-                
-                with col1:
-                    st.dataframe(
-                        action_df[['Priority', 'Item Type', 'Action', 'Confidence']],
-                        use_container_width=True,
-                        hide_index=True
-                    )
-                
-                with col2:
-                    # Priority distribution
-                    priority_counts = action_df['Priority'].value_counts()
-                    
-                    fig_priority = px.pie(
-                        values=priority_counts.values,
-                        names=priority_counts.index,
-                        title="Action Priority Distribution",
-                        color=priority_counts.index,
-                        color_discrete_map={
-                            '🔴 High': '#DC143C',
-                            '🟡 Medium': '#FFD700',
-                            '🟢 Low': '#32CD32'
-                        }
-                    )
-                    fig_priority.update_traces(textposition='inside', textinfo='percent+label')
-                    fig_priority.update_layout(height=300)
-                    st.plotly_chart(fig_priority, use_container_width=True)
+                # Display actions by confidence level - full width
+                st.dataframe(
+                    action_df[['Confidence Level', 'Item Type', 'Action', 'Confidence']],
+                    use_container_width=True,
+                    hide_index=True
+                )
                 
                 # Action summary
                 st.markdown("---")
-                st.subheader("📝 Action Summary")
+                st.subheader("📝 Action Summary by Confidence")
                 
-                high_priority = len(action_df[action_df['Priority'] == '🔴 High'])
-                medium_priority = len(action_df[action_df['Priority'] == '🟡 Medium'])
-                low_priority = len(action_df[action_df['Priority'] == '🟢 Low'])
+                high_confidence = len(action_df[action_df['Confidence Level'] == '🔴 High Confidence'])
+                medium_confidence = len(action_df[action_df['Confidence Level'] == '🟡 Medium Confidence'])
+                low_confidence = len(action_df[action_df['Confidence Level'] == '🟢 Low Confidence'])
                 
                 col1, col2, col3 = st.columns(3)
                 
                 with col1:
-                    if high_priority > 0:
-                        st.error(f"🔴 **{high_priority} High Priority Actions**")
-                        st.write("Immediate attention required")
+                    if high_confidence > 0:
+                        st.error(f"🔴 **{high_confidence} High Confidence Actions**")
+                        st.write("Very reliable detections (≥80%)")
                     else:
-                        st.success("✅ No high priority actions")
+                        st.success("✅ No high confidence actions")
                 
                 with col2:
-                    if medium_priority > 0:
-                        st.warning(f"🟡 **{medium_priority} Medium Priority Actions**")
-                        st.write("Address when possible")
+                    if medium_confidence > 0:
+                        st.warning(f"🟡 **{medium_confidence} Medium Confidence Actions**")
+                        st.write("Moderately reliable (60-80%)")
                     else:
-                        st.info("No medium priority actions")
+                        st.info("No medium confidence actions")
                 
                 with col3:
-                    if low_priority > 0:
-                        st.info(f"🟢 **{low_priority} Low Priority Actions**")
-                        st.write("Lower confidence detections")
+                    if low_confidence > 0:
+                        st.info(f"🟢 **{low_confidence} Low Confidence Actions**")
+                        st.write("Lower reliability (<60%)")
                     else:
-                        st.info("No low priority actions")
+                        st.info("No low confidence actions")
+                
+                # Task Priority Distribution
+                st.markdown("---")
+                st.subheader("📋 Task Priority Distribution")
+                st.info("💡 **Note**: Task priority is based on business importance of sections (configured in planogram), not detection confidence.")
+                
+                if not results.tasks.empty and 'priority' in results.tasks.columns:
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        priority_counts = results.tasks['priority'].value_counts()
+                        
+                        # Define colors for priorities
+                        priority_colors = {
+                            'High': '#DC143C',
+                            'Medium': '#FFD700',
+                            'Low': '#32CD32'
+                        }
+                        
+                        fig_tasks = px.pie(
+                            values=priority_counts.values,
+                            names=priority_counts.index,
+                            title="Task Priority Breakdown",
+                            color=priority_counts.index,
+                            color_discrete_map=priority_colors
+                        )
+                        fig_tasks.update_traces(textposition='inside', textinfo='percent+label')
+                        fig_tasks.update_layout(height=400)
+                        st.plotly_chart(fig_tasks, use_container_width=True)
+                    
+                    with col2:
+                        # Task details if available
+                        if 'task_type' in results.tasks.columns:
+                            task_type_counts = results.tasks['task_type'].value_counts()
+                            
+                            fig_task_types = px.bar(
+                                x=task_type_counts.values,
+                                y=task_type_counts.index,
+                                orientation='h',
+                                title="Tasks by Type",
+                                color=task_type_counts.values,
+                                color_continuous_scale='Blues'
+                            )
+                            fig_task_types.update_layout(height=400)
+                            st.plotly_chart(fig_task_types, use_container_width=True)
+                        else:
+                            st.info("Task type information not available")
+                else:
+                    st.info("No task data available")
     else:
         st.success("🎉 No misplaced items detected!")
-    
-    # Task Priority Distribution (moved to separate section)
-    st.markdown("---")
-    st.subheader("📋 Task Priority Distribution")
-    
-    if not results.tasks.empty and 'priority' in results.tasks.columns:
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            priority_counts = results.tasks['priority'].value_counts()
-            
-            # Define colors for priorities
-            priority_colors = {
-                'High': '#DC143C',
-                'Medium': '#FFD700',
-                'Low': '#32CD32'
-            }
-            
-            fig_tasks = px.pie(
-                values=priority_counts.values,
-                names=priority_counts.index,
-                title="Task Priority Breakdown",
-                color=priority_counts.index,
-                color_discrete_map=priority_colors
-            )
-            fig_tasks.update_traces(textposition='inside', textinfo='percent+label')
-            fig_tasks.update_layout(height=400)
-            st.plotly_chart(fig_tasks, use_container_width=True)
-        
-        with col2:
-            # Task details if available
-            if 'task_type' in results.tasks.columns:
-                task_type_counts = results.tasks['task_type'].value_counts()
-                
-                fig_task_types = px.bar(
-                    x=task_type_counts.values,
-                    y=task_type_counts.index,
-                    orientation='h',
-                    title="Tasks by Type",
-                    color=task_type_counts.values,
-                    color_continuous_scale='Blues'
-                )
-                fig_task_types.update_layout(height=400)
-                st.plotly_chart(fig_task_types, use_container_width=True)
-            else:
-                st.info("Task type information not available")
-    else:
-        st.info("No task data available")
 
 def create_section_performance_charts(results, config):
     """Create section performance analysis"""
@@ -1140,64 +1137,27 @@ def create_section_performance_charts(results, config):
     
     df_sections = pd.DataFrame(section_data)
     
-    col1, col2 = st.columns(2)
+    # Debug info to help user understand data scope
+    st.info(f"📊 Analyzing **{len(df_sections)}** sections from the planogram configuration")
     
-    with col1:
-        # Section stock level comparison
-        fig_stock = px.bar(
-            df_sections,
-            x='Section',
-            y='Stock Score %',
-            title="Section Stock Levels (vs Expected Visible Items)",
-            color='Stock Status',
-            color_discrete_map={
-                'Sold Out': '#DC143C',
-                'Misplaced Only': '#FF8C00', 
-                'Low Stock': '#FFD700',
-                'Partially Misplaced': '#4169E1',
-                'Available': '#32CD32'
-            }
-        )
-        fig_stock.add_hline(y=50, line_dash="dash", annotation_text="Low Stock Threshold: 50% of visible")
-        fig_stock.update_layout(height=400)
-        st.plotly_chart(fig_stock, use_container_width=True)
-    
-    with col2:
-        # Expected Visible vs Correctly Placed scatter plot
-        fig_scatter = px.scatter(
-            df_sections,
-            x='Expected Visible',
-            y='Correctly Placed',
-            size='Found Elsewhere',
-            color='Stock Status',
-            title="Expected Visible vs Correctly Placed Items (size = found elsewhere)",
-            labels={'Expected Visible': 'Expected Visible Items', 'Correctly Placed': 'Correctly Placed Items'},
-            color_discrete_map={
-                'Sold Out': '#DC143C',
-                'Misplaced Only': '#FF8C00',
-                'Low Stock': '#FFD700', 
-                'Partially Misplaced': '#4169E1',
-                'Available': '#32CD32'
-            }
-        )
-        # Add diagonal line for optimal stock level
-        max_val = max(df_sections['Expected Visible'].max(), df_sections['Correctly Placed'].max())
-        fig_scatter.add_shape(
-            type="line", line=dict(dash="dash", color="gray"),
-            x0=0, y0=0, x1=max_val, y1=max_val
-        )
-        fig_scatter.add_annotation(x=max_val*0.8, y=max_val*0.8, text="Optimal Level", 
-                                  showarrow=False, font=dict(color="gray", size=10))
-        
-        # Add 50% threshold line
-        fig_scatter.add_shape(
-            type="line", line=dict(dash="dash", color="orange"),
-            x0=0, y0=0, x1=max_val, y1=max_val*0.5
-        )
-        fig_scatter.add_annotation(x=max_val*0.8, y=max_val*0.4, text="Low Stock Threshold", 
-                                  showarrow=False, font=dict(color="orange", size=10))
-        fig_scatter.update_layout(height=400)
-        st.plotly_chart(fig_scatter, use_container_width=True)
+    # Section stock level comparison - full width
+    fig_stock = px.bar(
+        df_sections,
+        x='Section',
+        y='Stock Score %',
+        title="Section Stock Levels (vs Expected Visible Items)",
+        color='Stock Status',
+        color_discrete_map={
+            'Sold Out': '#DC143C',
+            'Misplaced Only': '#FF8C00', 
+            'Low Stock': '#FFD700',
+            'Partially Misplaced': '#4169E1',
+            'Available': '#32CD32'
+        }
+    )
+    fig_stock.add_hline(y=50, line_dash="dash", annotation_text="Low Stock Threshold: 50% of visible")
+    fig_stock.update_layout(height=500)
+    st.plotly_chart(fig_stock, use_container_width=True)
     
     # Section performance table
     st.subheader("📊 Detailed Section Metrics")
@@ -1208,22 +1168,6 @@ def create_section_performance_charts(results, config):
     
     st.dataframe(styled_df, use_container_width=True)
     
-    # Add column explanations
-    with st.expander("📋 Column Explanations"):
-        st.write("""
-        **Correctly Placed**: Items detected in this section that actually belong here
-        
-        **Found Elsewhere**: Items that belong to this section but were detected in other sections
-        
-        **Foreign Items**: Items detected in this section that actually belong elsewhere
-        
-        **Total Available**: Correctly Placed + Found Elsewhere (all items belonging to this section)
-        
-        **Stock Score**: Based only on correctly placed items vs expected visible items
-        
-        **Placement %**: Percentage of detected items in this section that are correctly placed
-        """)
-
 def _resize_image_for_display(image: Image.Image, max_width: int = 800) -> Image.Image:
     """
     Resize image for display while maintaining aspect ratio
