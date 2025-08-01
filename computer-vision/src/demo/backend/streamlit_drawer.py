@@ -4,6 +4,8 @@ import os
 import pandas as pd
 from PIL import Image, ImageDraw
 import numpy as np
+import base64
+import io
 from typing import List, Dict, Tuple, Optional
 from .coordinate_system import CoordinateSystem
 from .config import DeploymentConfig
@@ -15,6 +17,15 @@ try:
 except ImportError:
     CANVAS_AVAILABLE = False
     st.error("streamlit-drawable-canvas not installed. Please run: pip install streamlit-drawable-canvas")
+
+def pil_to_base64(image: Image.Image) -> str:
+    """
+    Convert PIL Image to base64 string for web display
+    """
+    buffer = io.BytesIO()
+    image.save(buffer, format='JPEG', quality=85)
+    img_str = base64.b64encode(buffer.getvalue()).decode()
+    return f"data:image/jpeg;base64,{img_str}"
 
 class StreamlitPlanogramDrawer:
     """
@@ -68,21 +79,26 @@ class StreamlitPlanogramDrawer:
         col1, col2, col3 = st.columns([1, 4, 1])  # Made middle column bigger
         with col2:
             # Create the interactive canvas
-            # Always use the PIL Image object - streamlit-drawable-canvas expects this
-            background_image = self.image
+            # Resize image to fit canvas dimensions to avoid internal resizing issues
+            resized_image = self.image.copy()
+            resized_image.thumbnail((canvas_width, canvas_height), Image.Resampling.LANCZOS)
             
             # Debug info for deployment troubleshooting
             if self.image_path:
                 st.info(f"🔍 Image loaded from path: {self.image_path}")
                 st.info(f"🔍 File exists: {os.path.exists(self.image_path)}")
+                st.info(f"🔍 Original image size: {self.image.size}")
+                st.info(f"🔍 Resized image size: {resized_image.size}")
             else:
                 st.info("🔍 Using original PIL Image object")
+                st.info(f"🔍 Original image size: {self.image.size}")
+                st.info(f"🔍 Resized image size: {resized_image.size}")
             
             canvas_result = st_canvas(
                 fill_color=fill_color,
                 stroke_width=stroke_width,
                 stroke_color=stroke_color,
-                background_image=background_image,
+                background_image=resized_image,
                 update_streamlit=True,
                 height=canvas_height,
                 width=canvas_width,
