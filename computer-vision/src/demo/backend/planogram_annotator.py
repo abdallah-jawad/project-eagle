@@ -23,11 +23,20 @@ class PlanogramAnnotator:
         if not self.config.planogram_image_path:
             raise ValueError("No planogram image path specified in configuration")
         
-        # Load the original image
-        if not os.path.exists(self.config.planogram_image_path):
-            raise FileNotFoundError(f"Planogram image not found: {self.config.planogram_image_path}")
+        # Load the original image with robust path resolution
+        image_path = self.config.planogram_image_path
         
-        image = Image.open(self.config.planogram_image_path)
+        # If path is relative, make it relative to the demo directory
+        if not os.path.isabs(image_path):
+            # Get the demo directory (parent of backend)
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            demo_dir = os.path.dirname(current_dir)
+            image_path = os.path.join(demo_dir, image_path)
+        
+        if not os.path.exists(image_path):
+            raise FileNotFoundError(f"Planogram image not found: {image_path} (original: {self.config.planogram_image_path})")
+        
+        image = Image.open(image_path)
         
         # Resize image to target size while maintaining aspect ratio
         resized_image = self._resize_image_with_aspect_ratio(image, target_size)
@@ -37,12 +46,28 @@ class PlanogramAnnotator:
         
         # Determine output path
         if output_path is None:
-            base_name = os.path.splitext(self.config.planogram_image_path)[0]
+            # Use the resolved image_path for generating output path
+            base_name = os.path.splitext(image_path)[0]
             output_path = f"{base_name}_annotated_1080x1440.jpg"
         
         # Save annotated image
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        annotated_image.save(output_path, format='JPEG', quality=95)
+        output_dir = os.path.dirname(output_path)
+        if output_dir:  # Only create directory if there is one
+            os.makedirs(output_dir, exist_ok=True)
+        
+        try:
+            annotated_image.save(output_path, format='JPEG', quality=95)
+        except Exception as e:
+            # If we can't save to the original location, try temp directory
+            from .config import DeploymentConfig
+            temp_dir = DeploymentConfig.get_temp_dir()
+            os.makedirs(temp_dir, exist_ok=True)
+            
+            filename = os.path.basename(output_path)
+            fallback_path = os.path.join(temp_dir, filename)
+            annotated_image.save(fallback_path, format='JPEG', quality=95)
+            output_path = fallback_path
+            print(f"⚠️ Saved annotated image to temp location: {output_path}")
         
         return output_path
     

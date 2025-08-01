@@ -220,14 +220,32 @@ def main():
                 
                 # Display annotated planogram image if available
                 if 'annotated_planogram_path' in st.session_state and st.session_state.annotated_planogram_path:
-                    if os.path.exists(st.session_state.annotated_planogram_path):
-                        planogram_image = Image.open(st.session_state.annotated_planogram_path)
+                    annotated_path = st.session_state.annotated_planogram_path
+                    
+                    # Handle relative paths for cloud deployment
+                    if not os.path.isabs(annotated_path) and not os.path.exists(annotated_path):
+                        # Try making it relative to current directory
+                        alt_path = os.path.join(os.getcwd(), annotated_path)
+                        if os.path.exists(alt_path):
+                            annotated_path = alt_path
+                    
+                    if os.path.exists(annotated_path):
+                        planogram_image = Image.open(annotated_path)
                         # Create a resized version for display
                         planogram_display = _resize_image_for_display(planogram_image, max_width=600)
                         st.image(planogram_display, caption="Expected Planogram Layout", use_container_width=True)
                         
                     else:
-                        st.error("Annotated planogram image not found.")
+                        st.error(f"Annotated planogram image not found at: {annotated_path}")
+                        # Try to recreate the annotated image
+                        if st.session_state.analyzer.config:
+                            try:
+                                annotator = PlanogramAnnotator(st.session_state.analyzer.config)
+                                new_annotated_path = annotator.annotate_planogram_image()
+                                st.session_state.annotated_planogram_path = new_annotated_path
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Could not recreate annotated planogram: {e}")
                 else:
                     st.info("Please select a planogram configuration to view the expected layout.")
         else:
