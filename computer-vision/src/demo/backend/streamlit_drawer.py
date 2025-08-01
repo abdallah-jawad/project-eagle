@@ -38,7 +38,6 @@ class StreamlitPlanogramDrawer:
         if image_path and os.path.exists(image_path):
             try:
                 self.image = Image.open(image_path)
-                st.info(f"🔍 Loaded image from path: {image_path}")
             except Exception as e:
                 st.warning(f"⚠️ Could not load image from path {image_path}: {e}")
                 self.image = image  # Fallback to original image
@@ -82,17 +81,6 @@ class StreamlitPlanogramDrawer:
             # Resize image to fit canvas dimensions to avoid internal resizing issues
             resized_image = self.image.copy()
             resized_image.thumbnail((canvas_width, canvas_height), Image.Resampling.LANCZOS)
-            
-            # Debug info for deployment troubleshooting
-            if self.image_path:
-                st.info(f"🔍 Image loaded from path: {self.image_path}")
-                st.info(f"🔍 File exists: {os.path.exists(self.image_path)}")
-                st.info(f"🔍 Original image size: {self.image.size}")
-                st.info(f"🔍 Resized image size: {resized_image.size}")
-            else:
-                st.info("🔍 Using original PIL Image object")
-                st.info(f"🔍 Original image size: {self.image.size}")
-                st.info(f"🔍 Resized image size: {resized_image.size}")
             
             canvas_result = st_canvas(
                 fill_color=fill_color,

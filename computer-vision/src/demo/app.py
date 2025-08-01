@@ -49,78 +49,80 @@ def create_planogram_config():
         st.error("⚠️ Drawing component not available. Please install: `pip install streamlit-drawable-canvas-fix`")
         return
     
-    # Step 1: Upload Image
-    uploaded_image = st.file_uploader(
-        "Upload your planogram image",
-        type=['png', 'jpg', 'jpeg'],
-        key="config_image_uploader"
+    # Use the base planogram image
+    base_image_path = os.path.join(
+        os.path.dirname(__file__), 
+        "config", 
+        "planogram_image", 
+        "planogram_base.jpeg"
     )
     
-    if uploaded_image is not None:
-        # Save uploaded image temporarily
-        image = Image.open(uploaded_image)
+    # Check if base image exists
+    if not os.path.exists(base_image_path):
+        st.error(f"❌ Base planogram image not found at: {base_image_path}")
+        st.info("Please ensure the planogram_base.jpeg file exists in the config/planogram_image/ directory.")
+        return
+    
+    # Load the base image
+    try:
+        image = Image.open(base_image_path)
+    except Exception as e:
+        st.error(f"❌ Error loading base image: {e}")
+        return
+    
+    # Create temporary file in deployment-configured temp directory
+    temp_dir = DeploymentConfig.get_temp_dir()
+    os.makedirs(temp_dir, exist_ok=True)
+    
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg', dir=temp_dir) as tmp_file:
+            image.save(tmp_file.name, 'JPEG')
+            temp_image_path = tmp_file.name
+    except Exception as e:
+        # Fallback: use system temp directory
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as tmp_file:
+            image.save(tmp_file.name, 'JPEG')
+            temp_image_path = tmp_file.name
+    
+    st.session_state.temp_image_path = temp_image_path
+    st.session_state.uploaded_image = image
+    
+    # Use the drawing interface
+    sections = create_planogram_drawing_interface(image, AVAILABLE_ITEMS, temp_image_path)
+    
+    # Configuration generation
+    if sections:
+        st.markdown("---")
+        st.subheader("💾 Save Configuration")
         
-        # Create temporary file in deployment-configured temp directory
-        temp_dir = DeploymentConfig.get_temp_dir()
-        os.makedirs(temp_dir, exist_ok=True)
+        col1, col2 = st.columns(2)
+        with col1:
+            config_name = st.text_input("Configuration Name", value="My Planogram")
+            store_id = st.text_input("Store ID", value="STORE_001")
+        with col2:
+            description = st.text_area("Description (optional)", value="")
         
-        # Debug temp directory info
-        st.info(f"🔍 Temp directory: {temp_dir}")
-        st.info(f"🔍 Temp directory exists: {os.path.exists(temp_dir)}")
-        st.info(f"🔍 Temp directory writable: {os.access(temp_dir, os.W_OK) if os.path.exists(temp_dir) else False}")
-        
-        try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg', dir=temp_dir) as tmp_file:
-                image.save(tmp_file.name, 'JPEG')
-                temp_image_path = tmp_file.name
-                st.info(f"🔍 Created temp file: {temp_image_path}")
-        except Exception as e:
-            st.warning(f"⚠️ Could not create temp file in {temp_dir}: {e}")
-            # Fallback: use system temp directory
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as tmp_file:
-                image.save(tmp_file.name, 'JPEG')
-                temp_image_path = tmp_file.name
-                st.info(f"🔍 Created fallback temp file: {temp_image_path}")
-        
-        st.session_state.temp_image_path = temp_image_path
-        st.session_state.uploaded_image = image
-        
-        # Use the drawing interface
-        sections = create_planogram_drawing_interface(image, AVAILABLE_ITEMS, temp_image_path)
-        
-        # Configuration generation
-        if sections:
-            st.markdown("---")
-            st.subheader("💾 Save Configuration")
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                config_name = st.text_input("Configuration Name", value="My Planogram")
-                store_id = st.text_input("Store ID", value="STORE_001")
-            with col2:
-                description = st.text_area("Description (optional)", value="")
-            
-            if st.button("🚀 Save Configuration", type="primary"):
-                try:
-                    config_data = generate_planogram_config(
-                        sections, image, config_name, store_id, description
-                    )
-                    
-                    config_file, image_file = save_planogram_config(config_data, image)
-                    
-                    st.success("✅ Configuration saved successfully!")
-                    st.info("Your configuration is now available in the Analysis tab.")
-                    
-                    # Clean up temp file
-                    if hasattr(st.session_state, 'temp_image_path'):
-                        try:
-                            os.unlink(st.session_state.temp_image_path)
-                            delattr(st.session_state, 'temp_image_path')
-                        except Exception as e:
-                            st.warning(f"Could not clean up temporary file: {e}")
-                            
-                except Exception as e:
-                    st.error(f"Error saving configuration: {e}")
+        if st.button("🚀 Save Configuration", type="primary"):
+            try:
+                config_data = generate_planogram_config(
+                    sections, image, config_name, store_id, description
+                )
+                
+                config_file, image_file = save_planogram_config(config_data, image)
+                
+                st.success("✅ Configuration saved successfully!")
+                st.info("Your configuration is now available in the Analysis tab.")
+                
+                # Clean up temp file
+                if hasattr(st.session_state, 'temp_image_path'):
+                    try:
+                        os.unlink(st.session_state.temp_image_path)
+                        delattr(st.session_state, 'temp_image_path')
+                    except Exception as e:
+                        st.warning(f"Could not clean up temporary file: {e}")
+                        
+            except Exception as e:
+                st.error(f"Error saving configuration: {e}")
 
 def main():
     st.title("🏪 Planogram Vision System Demo")
@@ -826,8 +828,8 @@ def create_issues_tasks_charts(results):
                 movement_data = []
                 for _, row in results.misplaced_items.iterrows():
                     movement_data.append({
-                        'From': row['actual_section'],
-                        'To': row['expected_section'],
+                        'From': row['expected_section'],
+                        'To': row['actual_section'],
                         'Item': row['item_class'] if 'item_class' in row else 'Unknown',
                         'Confidence': row['confidence'] if 'confidence' in row else 0
                     })
@@ -1136,9 +1138,6 @@ def create_section_performance_charts(results, config):
         })
     
     df_sections = pd.DataFrame(section_data)
-    
-    # Debug info to help user understand data scope
-    st.info(f"📊 Analyzing **{len(df_sections)}** sections from the planogram configuration")
     
     # Section stock level comparison - full width
     fig_stock = px.bar(
