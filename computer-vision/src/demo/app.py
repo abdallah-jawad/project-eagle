@@ -83,9 +83,8 @@ def create_planogram_config():
         "planogram_base.jpeg"
     )
     
-    # If the relative path doesn't work, try alternative paths for deployment
+    # Try alternative paths for deployment if the primary path doesn't work
     if not os.path.exists(base_image_path):
-        # Try alternative paths for deployment
         alternative_paths = [
             os.path.join(os.getcwd(), "config", "planogram_image", "planogram_base.jpeg"),
             os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", "planogram_image", "planogram_base.jpeg"),
@@ -93,12 +92,17 @@ def create_planogram_config():
             "./config/planogram_image/planogram_base.jpeg"
         ]
         
+        # Try to find the image in alternative paths
+        image_found = False
         for alt_path in alternative_paths:
             if os.path.exists(alt_path):
                 base_image_path = alt_path
+                st.success(f"✅ Found base image at: {base_image_path}")
+                image_found = True
                 break
-        else:
-            # If still not found, show debug information
+        
+        if not image_found:
+            # If still not found, show debug information and create placeholder
             st.error(f"❌ Base planogram image not found")
             st.info("Debug information:")
             st.write(f"**Current working directory:** `{os.getcwd()}`")
@@ -131,12 +135,10 @@ def create_planogram_config():
                 
             except Exception as e:
                 st.error(f"❌ Could not create placeholder image: {e}")
-                                return
-            else:
-                # Image was found in one of the alternative paths
-                st.success(f"✅ Found base image at: {base_image_path}")
-        
-        # Load the base image
+                return
+    
+    # Load the base image (only if we haven't already loaded the placeholder)
+    if 'image' not in locals():
         try:
             image = Image.open(base_image_path)
         except Exception as e:
