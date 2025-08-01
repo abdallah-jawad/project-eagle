@@ -170,7 +170,7 @@ class MisplacedItem:
     detected_item: DetectedItem
     expected_section: str
     actual_section: Optional[str]
-    distance_from_expected: float
+    visualization_image: Optional[Image.Image] = None  # Individual visualization image
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for DataFrame creation"""
@@ -179,9 +179,9 @@ class MisplacedItem:
             'confidence': self.detected_item.confidence,
             'expected_section': self.expected_section,
             'actual_section': self.actual_section or 'Unknown',
-            'distance_from_expected': round(self.distance_from_expected, 2),
             'center_x': self.detected_item.bbox.center[0],
-            'center_y': self.detected_item.bbox.center[1]
+            'center_y': self.detected_item.bbox.center[1],
+            'has_visualization': self.visualization_image is not None
         }
 
 @dataclass
@@ -316,6 +316,8 @@ class AnalysisResults:
     detailed_inventory_status: pd.DataFrame
     annotated_image: Optional[Image.Image] = None
     tasks: Optional[pd.DataFrame] = None
+    # Store raw misplaced items to access visualization images
+    raw_misplaced_items: Optional[List['MisplacedItem']] = None
 
     @classmethod
     def create_empty(cls) -> 'AnalysisResults':
@@ -325,7 +327,8 @@ class AnalysisResults:
             misplaced_items=pd.DataFrame(),
             detailed_inventory_status=pd.DataFrame(),
             tasks=pd.DataFrame(),
-            annotated_image=None
+            annotated_image=None,
+            raw_misplaced_items=[]
         )
 
     def to_dict(self) -> Dict[str, Any]:

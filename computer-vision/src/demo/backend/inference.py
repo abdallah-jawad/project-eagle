@@ -19,7 +19,7 @@ class ModelInference:
         # Use relative path from current file location (cross-platform compatible)
         current_dir = os.path.dirname(os.path.abspath(__file__))
         demo_dir = os.path.dirname(current_dir)  # Go up one level to demo directory
-        self.weights_path = os.path.join(demo_dir, "weights", "pick-instance-seg-v11-1.3-L.pt")
+        self.weights_path = os.path.join(demo_dir, "weights", "pick-instance-seg-v11-1.2.pt")
         self._load_model()
     
     def _load_model(self) -> None:

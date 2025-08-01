@@ -286,12 +286,79 @@ def main():
                     st.dataframe(results.misplaced_items, use_container_width=True)
                     st.error(f"Found {len(results.misplaced_items)} misplaced items!")
                     
-                    # Misplaced items by expected section
-                    if 'expected_section' in results.misplaced_items.columns:
-                        misplaced_counts = results.misplaced_items['expected_section'].value_counts()
-                        st.subheader("Misplaced Items by Target Section")
-                        for section, count in misplaced_counts.items():
-                            st.warning(f"**{section}**: {count} items need relocation")
+                    # Display individual visualizations for misplaced items
+                    st.markdown("---")
+                    st.subheader("🔍 Individual Misplaced Item Visualizations")
+                    st.info("Each visualization shows the misplaced item (red), its current section (orange), and where it should be (green).")
+                    
+                    # Access the raw misplaced items with their visualization images
+                    if hasattr(results, 'raw_misplaced_items') and results.raw_misplaced_items:
+                        # Create expandable sections for each misplaced item with visualizations
+                        for i, misplaced_item in enumerate(results.raw_misplaced_items):
+                            item_class = misplaced_item.detected_item.class_name
+                            expected_section = misplaced_item.expected_section
+                            actual_section = misplaced_item.actual_section or 'Unknown'
+                            confidence = misplaced_item.detected_item.confidence
+                            
+                            with st.expander(f"🔴 {item_class} (Confidence: {confidence:.2f})", expanded=False):
+                                col1, col2 = st.columns([1, 1])
+                                
+                                with col1:
+                                    st.write("**Issue Details:**")
+                                    st.write(f"• **Item Type:** {item_class}")
+                                    st.write(f"• **Confidence:** {confidence:.2f}")
+                                    st.write(f"• **Should be in:** {expected_section}")
+                                    st.write(f"• **Currently in:** {actual_section}")
+                                    
+                                    st.write("**Action Required:**")
+                                    st.error(f"Move this {item_class} from **{actual_section}** to **{expected_section}**")
+                                    
+                                    # Legend for the visualization
+                                    st.write("**Visualization Legend:**")
+                                    st.markdown("🔴 **Red**: Misplaced item")
+                                    st.markdown("🟢 **Green**: Where it should be")
+                                    if actual_section != 'Unknown':
+                                        st.markdown("🟠 **Orange**: Where it currently is")
+                                
+                                with col2:
+                                    st.write("**Detailed Visualization:**")
+                                    
+                                    # Display the visualization image if available
+                                    if misplaced_item.visualization_image is not None:
+                                        # Create a smaller version for display
+                                        display_viz = _resize_image_for_display(
+                                            misplaced_item.visualization_image, 
+                                            max_width=600
+                                        )
+                                        st.image(
+                                            display_viz, 
+                                            caption=f"Misplaced {item_class} - Move to {expected_section}",
+                                            use_container_width=True
+                                        )
+                                    else:
+                                        st.warning("Visualization not available for this item.")
+                    else:
+                        # Fallback to basic information if raw items not available
+                        st.info("Detailed visualizations with raw misplaced items are not available in this analysis result.")
+                        
+                        # Create expandable sections with basic information
+                        for idx, row in results.misplaced_items.iterrows():
+                            item_class = row['item_class']
+                            expected_section = row['expected_section']
+                            actual_section = row['actual_section']
+                            confidence = row['confidence']
+                            
+                            with st.expander(f"🔴 {item_class} (Confidence: {confidence:.2f})", expanded=False):
+                                st.write("**Issue Details:**")
+                                st.write(f"• **Item Type:** {item_class}")
+                                st.write(f"• **Confidence:** {confidence:.2f}")
+                                st.write(f"• **Should be in:** {expected_section}")
+                                st.write(f"• **Currently in:** {actual_section}")
+                                
+                                st.write("**Action Required:**")
+                                st.error(f"Move this {item_class} from **{actual_section}** to **{expected_section}**")
+                                
+                                st.info("💡 Run a new analysis to generate detailed visualizations.")
                 else:
                     st.success("No misplaced items detected!")
             
@@ -373,26 +440,8 @@ def main():
                 st.subheader("Recommended Tasks")
                 if not results.tasks.empty:
                     st.dataframe(results.tasks, use_container_width=True)
-                    
-                    # Task priority and type summary
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        if 'priority' in results.tasks.columns:
-                            st.subheader("By Priority")
-                            priority_counts = results.tasks['priority'].value_counts()
-                            st.metric("🔴 High Priority", priority_counts.get('High', 0))
-                            st.metric("🟡 Medium Priority", priority_counts.get('Medium', 0))
-                            st.metric("🟢 Low Priority", priority_counts.get('Low', 0))
-                    
-                    with col2:
-                        if 'task_type' in results.tasks.columns:
-                            st.subheader("By Type")
-                            type_counts = results.tasks['task_type'].value_counts()
-                            for task_type, count in type_counts.items():
-                                st.metric(f"{task_type}", count)
                 else:
-                    st.success("No tasks required!")
+                    st.info("No tasks available at this time.")
             
             with results_tab5:
                 st.subheader("Analysis Summary")

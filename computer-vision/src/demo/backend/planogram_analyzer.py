@@ -72,23 +72,26 @@ class PlanogramAnalyzer:
             # Step 3: Find misplaced items
             misplaced_items = self._find_misplaced_items(detected_items)
             
+            # Step 4: Generate visualizations for misplaced items
+            self._generate_misplaced_item_visualizations(image, misplaced_items)
             
-            # Step 4.5: Calculate detailed inventory status
+            # Step 5: Calculate detailed inventory status
             detailed_inventory_status = self._calculate_detailed_inventory_status(detected_items, misplaced_items)
             
-            # Step 5: Generate tasks
+            # Step 6: Generate tasks
             tasks = self._generate_tasks(detailed_inventory_status, misplaced_items)
             
-            # Step 6: Create annotated image
+            # Step 7: Create annotated image
             annotated_image = self._create_annotated_image(image, detected_items, misplaced_items)
             
-            # Step 7: Convert to DataFrames
+            # Step 8: Convert to DataFrames
             results = AnalysisResults(
                 detected_items=pd.DataFrame([item.to_dict() for item in detected_items]),
                 misplaced_items=pd.DataFrame([item.to_dict() for item in misplaced_items]),
                 detailed_inventory_status=pd.DataFrame([status.to_dict() for status in detailed_inventory_status]),
                 tasks=pd.DataFrame([task.to_dict() for task in tasks]) if tasks else pd.DataFrame(),
-                annotated_image=annotated_image
+                annotated_image=annotated_image,
+                raw_misplaced_items=misplaced_items  # Store raw items for visualization access
             )
             
             return results
@@ -178,11 +181,183 @@ class PlanogramAnalyzer:
                     detected_item=item,
                     expected_section=closest_section.section_id if closest_section else "Unknown",
                     actual_section=item.section_id,  # Where it currently is (could be None)
-                    distance_from_expected=0.0  # Not using distance anymore, but keeping for compatibility
                 )
                 misplaced_items.append(misplaced)
         
         return misplaced_items
+    
+    def _generate_misplaced_item_visualizations(
+        self, 
+        original_image: Image.Image, 
+        misplaced_items: List[MisplacedItem]
+    ) -> None:
+        """
+        Generate individual visualization images for each misplaced item.
+        Each image highlights the misplaced item, its current section, and expected section.
+        
+        Args:
+            original_image: The original image being analyzed
+            misplaced_items: List of misplaced items to create visualizations for
+        """
+        for misplaced_item in misplaced_items:
+            try:
+                # Create a copy of the original image for this visualization
+                viz_image = original_image.copy()
+                draw = ImageDraw.Draw(viz_image)
+                
+                # Try to load a font, fallback to default if not available
+                try:
+                    font = ImageFont.truetype("arial.ttf", 20)
+                    small_font = ImageFont.truetype("arial.ttf", 16)
+                except:
+                    try:
+                        font = ImageFont.load_default()
+                        small_font = ImageFont.load_default()
+                    except:
+                        font = None
+                        small_font = None
+                
+                # Get the misplaced item's position in display coordinates
+                item_bbox = CoordinateSystem.reference_to_original(
+                    misplaced_item.detected_item.bbox, original_image
+                )
+                
+                # Draw the misplaced item with a thick red outline
+                draw.rectangle(
+                    [item_bbox.x1, item_bbox.y1, item_bbox.x2, item_bbox.y2],
+                    outline="#FF0000",  # Red for misplaced item
+                    width=4
+                )
+                
+                # Draw the item's mask if available
+                if misplaced_item.detected_item.mask_polygon:
+                    try:
+                        display_polygon = []
+                        for point in misplaced_item.detected_item.mask_polygon:
+                            if len(point) >= 2:
+                                ref_point = BoundingBox(point[0], point[1], point[0], point[1])
+                                display_point = CoordinateSystem.reference_to_original(ref_point, original_image)
+                                display_polygon.append((int(display_point.x1), int(display_point.y1)))
+                        
+                        if display_polygon:
+                            draw.polygon(display_polygon, outline="#FF0000", width=3)
+                    except Exception as e:
+                        print(f"⚠️ Error drawing mask polygon for misplaced item: {e}")
+                
+                # Draw current section (if any) with orange outline
+                if misplaced_item.actual_section:
+                    current_section = None
+                    for section in self.config.sections:
+                        if section.section_id == misplaced_item.actual_section:
+                            current_section = section
+                            break
+                    
+                    if current_section:
+                        current_section_bbox = CoordinateSystem.reference_to_original(
+                            current_section.position, original_image
+                        )
+                        draw.rectangle(
+                            [current_section_bbox.x1, current_section_bbox.y1, 
+                             current_section_bbox.x2, current_section_bbox.y2],
+                            outline="#FFA500",  # Orange for current section
+                            width=3
+                        )
+                
+                # Draw expected section with green outline
+                expected_section = None
+                for section in self.config.sections:
+                    if section.section_id == misplaced_item.expected_section:
+                        expected_section = section
+                        break
+                
+                if expected_section:
+                    expected_section_bbox = CoordinateSystem.reference_to_original(
+                        expected_section.position, original_image
+                    )
+                    draw.rectangle(
+                        [expected_section_bbox.x1, expected_section_bbox.y1, 
+                         expected_section_bbox.x2, expected_section_bbox.y2],
+                        outline="#00FF00",  # Green for expected section
+                        width=3
+                    )
+                
+                # Add labels and legend
+                if font:
+                    # Title at the top
+                    title = f"Misplaced: {misplaced_item.detected_item.class_name}"
+                    title_bbox = draw.textbbox((10, 10), title, font=font)
+                    draw.rectangle(
+                        [title_bbox[0] - 5, title_bbox[1] - 2, title_bbox[2] + 5, title_bbox[3] + 2],
+                        fill="white",
+                        outline="black",
+                        width=2
+                    )
+                    draw.text((10, 10), title, fill="black", font=font)
+                    
+                    # Legend
+                    legend_y = 50
+                    legend_items = [
+                        ("🔴 Misplaced Item", "#FF0000"),
+                        ("🟢 Should be in", "#00FF00"),
+                    ]
+                    
+                    if misplaced_item.actual_section:
+                        legend_items.append(("🟠 Currently in", "#FFA500"))
+                    
+                    for i, (label, color) in enumerate(legend_items):
+                        y_pos = legend_y + (i * 25)
+                        
+                        # Draw colored box
+                        draw.rectangle(
+                            [10, y_pos, 30, y_pos + 15],
+                            fill=color,
+                            outline="black",
+                            width=1
+                        )
+                        
+                        # Draw label with background
+                        if small_font:
+                            label_bbox = draw.textbbox((35, y_pos), label, font=small_font)
+                            draw.rectangle(
+                                [label_bbox[0] - 2, label_bbox[1] - 1, label_bbox[2] + 2, label_bbox[3] + 1],
+                                fill="white",
+                                outline="black",
+                                width=1
+                            )
+                            draw.text((35, y_pos), label, fill="black", font=small_font)
+                    
+                    # Section names
+                    details_y = legend_y + len(legend_items) * 25 + 20
+                    
+                    if expected_section:
+                        expected_text = f"Expected: {expected_section.name}"
+                        expected_bbox = draw.textbbox((10, details_y), expected_text, font=small_font)
+                        draw.rectangle(
+                            [expected_bbox[0] - 2, expected_bbox[1] - 1, expected_bbox[2] + 2, expected_bbox[3] + 1],
+                            fill="white",
+                            outline="black",
+                            width=1
+                        )
+                        draw.text((10, details_y), expected_text, fill="black", font=small_font)
+                        details_y += 25
+                    
+                    if misplaced_item.actual_section and current_section:
+                        current_text = f"Currently: {current_section.name}"
+                        current_bbox = draw.textbbox((10, details_y), current_text, font=small_font)
+                        draw.rectangle(
+                            [current_bbox[0] - 2, current_bbox[1] - 1, current_bbox[2] + 2, current_bbox[3] + 1],
+                            fill="white",
+                            outline="black",
+                            width=1
+                        )
+                        draw.text((10, details_y), current_text, fill="black", font=small_font)
+                
+                # Store the visualization in the misplaced item
+                misplaced_item.visualization_image = viz_image
+                
+            except Exception as e:
+                print(f"⚠️ Error creating visualization for misplaced item {misplaced_item.detected_item.class_name}: {e}")
+                misplaced_item.visualization_image = None
     
     def _point_in_section(self, x: float, y: float, section: PlanogramSection) -> bool:
         """
@@ -335,42 +510,6 @@ class PlanogramAnalyzer:
                         priority="High" if status == "Sold Out" else "Medium",
                         task_type="Restock",
                         estimated_time=10
-                    )
-                    tasks.append(task)
-                    task_counter += 1
-                
-                elif status == "Misplaced Only" or status == "Partially Misplaced":
-                    task = Task(
-                        task_id=f"CHECK_{task_counter:03d}",
-                        description=f"Check for misplaced {item_type} for section {section_name}",
-                        section_id=section_id,
-                        priority="Medium",
-                        task_type="Check",
-                        estimated_time=7
-                    )
-                    tasks.append(task)
-                    task_counter += 1
-
-                elif item_breakdown.get('availability_status') == "Overstock":
-                    task = Task(
-                        task_id=f"REMOVE_{task_counter:03d}",
-                        description=f"Remove excess {item_type} from {section_name}",
-                        section_id=section_id,
-                        priority="Low",
-                        task_type="Remove",
-                        estimated_time=5
-                    )
-                    tasks.append(task)
-                    task_counter += 1
-
-                elif item_breakdown.get('availability_status') == "Unexpected Item":
-                    task = Task(
-                        task_id=f"REMOVE_{task_counter:03d}",
-                        description=f"Remove unexpected item {item_type} from {section_name}",
-                        section_id=section_id,
-                        priority="Medium",
-                        task_type="Remove",
-                        estimated_time=5
                     )
                     tasks.append(task)
                     task_counter += 1
