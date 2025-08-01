@@ -119,19 +119,31 @@ demo/
 
 ### Common Issues
 
-1. **Model weights not found:**
+1. **OpenCV/cv2 Import Error (ultralytics dependency):**
+   ```
+   ImportError: ... cv2
+   ```
+   **Solution:** 
+   - The application uses `opencv-python-headless` which works for both local and deployment environments
+   - If you have conflicting OpenCV installations, clean them up: 
+     ```bash
+     pip uninstall opencv-python opencv-python-headless
+     pip install opencv-python-headless
+     ```
+
+2. **Model weights not found:**
    - Ensure the weights file is in the correct directory
    - Check `PLANOGRAM_WEIGHTS_DIR` and `PLANOGRAM_MODEL_WEIGHTS` environment variables
 
-2. **Configuration files not loading:**
+3. **Configuration files not loading:**
    - Verify `PLANOGRAM_CONFIG_DIR` points to the correct directory
    - Ensure JSON configuration files are valid
 
-3. **Font loading errors:**
+4. **Font loading errors:**
    - The application will fallback to default fonts if system fonts are not available
    - This is normal in containerized environments
 
-4. **Temporary file permissions:**
+5. **Temporary file permissions:**
    - Ensure the `PLANOGRAM_TEMP_DIR` is writable
    - Check file system permissions
 
