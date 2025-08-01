@@ -117,6 +117,34 @@ def main():
             
             # Planogram selection
             config_files = PlanogramConfig.list_available_configs()
+            
+            # Temporary debug info for cloud deployment
+            if not config_files:
+                st.warning("🔍 Debug: No config files found")
+                from backend.config import DeploymentConfig
+                config_dir = DeploymentConfig.get_config_dir()
+                st.write(f"**Looking in:** `{config_dir}`")
+                st.write(f"**Absolute path:** `{os.path.abspath(config_dir)}`")
+                st.write(f"**Directory exists:** {os.path.exists(config_dir)}")
+                if os.path.exists(config_dir):
+                    try:
+                        files = os.listdir(config_dir)
+                        st.write(f"**Files found:** {files}")
+                    except Exception as e:
+                        st.write(f"**Error listing files:** {e}")
+                        
+                # Also check current working directory
+                st.write(f"**Current working directory:** `{os.getcwd()}`")
+                
+                # List what's in the current directory
+                try:
+                    current_files = os.listdir(".")
+                    st.write(f"**Files in current dir:** {current_files[:10]}...")  # Show first 10
+                except Exception as e:
+                    st.write(f"**Error listing current dir:** {e}")
+                    
+                st.info("💡 The app will automatically create the store_004.json configuration if it's missing.")
+            
             if config_files:
                 selected_config = st.selectbox(
                     "Select Planogram Configuration",
