@@ -33,23 +33,15 @@ class StreamlitPlanogramDrawer:
     """
     
     def __init__(self, image: Image.Image, image_path: str = None):
-        # Debug information
-        st.write(f"🔍 StreamlitPlanogramDrawer init - image_path: {image_path}")
-        st.write(f"🔍 Original image size: {image.size if image else 'None'}")
         
         # If image_path is provided and exists, load the image from the path
         # This ensures we have a fresh PIL Image object for deployment scenarios
         if image_path and os.path.exists(image_path):
             try:
-                st.write(f"🔍 Loading image from path: {image_path}")
                 self.image = Image.open(image_path)
-                st.write(f"✅ Successfully loaded image from path, size: {self.image.size}")
             except Exception as e:
-                st.warning(f"⚠️ Could not load image from path {image_path}: {e}")
-                st.write(f"🔍 Falling back to original image, size: {image.size if image else 'None'}")
                 self.image = image  # Fallback to original image
         else:
-            st.write(f"🔍 Using original image directly, size: {image.size if image else 'None'}")
             self.image = image
             
         self.image_path = image_path
@@ -62,9 +54,6 @@ class StreamlitPlanogramDrawer:
         if not CANVAS_AVAILABLE:
             st.error("Canvas not available - streamlit-drawable-canvas not installed")
             return []
-            
-        # Debug information
-        st.write(f"🔍 Canvas setup - image size: {self.image.size}")
         
         # Fixed drawing settings - no sidebar controls
         drawing_mode = "rect"
@@ -93,9 +82,6 @@ class StreamlitPlanogramDrawer:
             # Resize image to fit canvas dimensions to avoid internal resizing issues
             resized_image = self.image.copy()
             resized_image.thumbnail((canvas_width, canvas_height), Image.Resampling.LANCZOS)
-            
-            st.write(f"🔍 Canvas dimensions: {canvas_width}x{canvas_height}")
-            st.write(f"🔍 Resized image size: {resized_image.size}")
             
             canvas_result = st_canvas(
                 fill_color=fill_color,
