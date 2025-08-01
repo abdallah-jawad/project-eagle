@@ -40,16 +40,42 @@ def create_planogram_config():
     """Component for creating planogram configurations"""
     st.header("🎯 Create New Planogram")
     
+    # Add debug information for deployment troubleshooting
+    with st.expander("🔧 Debug Information (Click to expand)"):
+        st.write("**Environment Information:**")
+        st.write(f"  - Current working directory: `{os.getcwd()}`")
+        st.write(f"  - Script directory: `{os.path.dirname(__file__)}`")
+        st.write(f"  - Absolute script directory: `{os.path.dirname(os.path.abspath(__file__))}`")
+        st.write(f"  - Platform: `{os.name}`")
+        st.write(f"  - Python version: `{os.sys.version}`")
+        
+        # Check if config directories exist
+        from backend.config import DeploymentConfig
+        config_dir = DeploymentConfig.get_config_dir()
+        images_dir = DeploymentConfig.get_images_dir()
+        temp_dir = DeploymentConfig.get_temp_dir()
+        
+        st.write("**Directory Information:**")
+        st.write(f"  - Config directory: `{config_dir}` (exists: {os.path.exists(config_dir)})")
+        st.write(f"  - Images directory: `{images_dir}` (exists: {os.path.exists(images_dir)})")
+        st.write(f"  - Temp directory: `{temp_dir}` (exists: {os.path.exists(temp_dir)})")
+        
+        # Check for base image
+        base_image_path = os.path.join(os.path.dirname(__file__), "config", "planogram_image", "planogram_base.jpeg")
+        st.write(f"  - Base image path: `{base_image_path}` (exists: {os.path.exists(base_image_path)})")
+    
     # Check if interactive canvas is available (silently)
     try:
         from streamlit_drawable_canvas import st_canvas
         canvas_available = True
-    except ImportError:
+        st.success("✅ Canvas component is available")
+    except ImportError as e:
         canvas_available = False
-        st.error("⚠️ Drawing component not available. Please install: `pip install streamlit-drawable-canvas-fix`")
+        st.error(f"⚠️ Drawing component not available: {e}")
+        st.error("Please install: `pip install streamlit-drawable-canvas-fix`")
         return
     
-    # Use the base planogram image
+    # Use the base planogram image - handle both local and deployed environments
     base_image_path = os.path.join(
         os.path.dirname(__file__), 
         "config", 
@@ -57,18 +83,65 @@ def create_planogram_config():
         "planogram_base.jpeg"
     )
     
-    # Check if base image exists
+    # If the relative path doesn't work, try alternative paths for deployment
     if not os.path.exists(base_image_path):
-        st.error(f"❌ Base planogram image not found at: {base_image_path}")
-        st.info("Please ensure the planogram_base.jpeg file exists in the config/planogram_image/ directory.")
-        return
-    
-    # Load the base image
-    try:
-        image = Image.open(base_image_path)
-    except Exception as e:
-        st.error(f"❌ Error loading base image: {e}")
-        return
+        # Try alternative paths for deployment
+        alternative_paths = [
+            os.path.join(os.getcwd(), "config", "planogram_image", "planogram_base.jpeg"),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", "planogram_image", "planogram_base.jpeg"),
+            "config/planogram_image/planogram_base.jpeg",
+            "./config/planogram_image/planogram_base.jpeg"
+        ]
+        
+        for alt_path in alternative_paths:
+            if os.path.exists(alt_path):
+                base_image_path = alt_path
+                break
+        else:
+            # If still not found, show debug information
+            st.error(f"❌ Base planogram image not found")
+            st.info("Debug information:")
+            st.write(f"**Current working directory:** `{os.getcwd()}`")
+            st.write(f"**Script directory:** `{os.path.dirname(__file__)}`")
+            st.write(f"**Absolute script directory:** `{os.path.dirname(os.path.abspath(__file__))}`")
+            st.write(f"**Tried paths:**")
+            for path in [base_image_path] + alternative_paths:
+                st.write(f"  - `{path}` (exists: {os.path.exists(path)})")
+            st.info("Please ensure the planogram_base.jpeg file exists in the config/planogram_image/ directory.")
+            
+            # Create a fallback placeholder image for testing
+            st.warning("⚠️ Creating a placeholder image for testing purposes...")
+            try:
+                from PIL import Image, ImageDraw
+                # Create a simple placeholder image
+                placeholder_image = Image.new('RGB', (800, 600), color='white')
+                draw = ImageDraw.Draw(placeholder_image)
+                draw.rectangle([50, 50, 750, 550], outline='black', width=2)
+                draw.text((400, 300), "Placeholder\nPlanogram Image", fill='black', anchor='mm')
+                
+                # Save placeholder to temp directory
+                temp_dir = DeploymentConfig.get_temp_dir()
+                os.makedirs(temp_dir, exist_ok=True)
+                placeholder_path = os.path.join(temp_dir, "placeholder_planogram.jpg")
+                placeholder_image.save(placeholder_path, 'JPEG')
+                
+                base_image_path = placeholder_path
+                image = placeholder_image
+                st.success("✅ Created placeholder image for testing")
+                
+            except Exception as e:
+                st.error(f"❌ Could not create placeholder image: {e}")
+                                return
+            else:
+                # Image was found in one of the alternative paths
+                st.success(f"✅ Found base image at: {base_image_path}")
+        
+        # Load the base image
+        try:
+            image = Image.open(base_image_path)
+        except Exception as e:
+            st.error(f"❌ Error loading base image: {e}")
+            return
     
     # Create temporary file in deployment-configured temp directory
     temp_dir = DeploymentConfig.get_temp_dir()
