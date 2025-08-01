@@ -167,6 +167,15 @@ def create_planogram_drawing_interface(image: Image.Image, available_items: List
                         key=f"section_count_{i}"
                     )
                     
+                    expected_visible_count = st.number_input(
+                        "Expected visible count", 
+                        min_value=1, 
+                        max_value=expected_count,
+                        value=st.session_state.section_configs.get(f"{section_key}_visible_count", min(expected_count, 1)),
+                        help="How many items you expect to be visible (considering occlusion)",
+                        key=f"section_visible_count_{i}"
+                    )
+                    
                     priority = st.selectbox(
                         "Priority", 
                         ["High", "Medium", "Low"], 
@@ -182,6 +191,7 @@ def create_planogram_drawing_interface(image: Image.Image, available_items: List
                 st.session_state.section_configs[f"{section_key}_priority"] = priority
                 st.session_state.section_configs[f"{section_key}_items"] = expected_items
                 st.session_state.section_configs[f"{section_key}_count"] = expected_count
+                st.session_state.section_configs[f"{section_key}_visible_count"] = expected_visible_count
                 
                 # Add to configured sections if all required fields are filled
                 if section_id and section_name and expected_items:
@@ -192,6 +202,7 @@ def create_planogram_drawing_interface(image: Image.Image, available_items: List
                         "coordinates": coords,
                         "expected_items": expected_items,
                         "expected_count": expected_count,
+                        "expected_visible_count": expected_visible_count,
                         "priority": priority
                     })
         
@@ -240,6 +251,7 @@ def generate_planogram_config(
             "name": section["name"],
             "expected_items": section["expected_items"],
             "expected_count": section["expected_count"],
+            "expected_visible_count": section["expected_visible_count"],
             "position": section["coordinates"],
             "priority": section["priority"]
         }
