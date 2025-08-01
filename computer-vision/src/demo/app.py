@@ -75,6 +75,14 @@ def create_planogram_config():
         st.error("Please install: `pip install streamlit-drawable-canvas-fix`")
         return
     
+    # Import PIL at the beginning to ensure it's available
+    try:
+        from PIL import Image, ImageDraw
+    except ImportError as e:
+        st.error(f"❌ PIL/Pillow not available: {e}")
+        st.error("Please install: `pip install Pillow`")
+        return
+    
     # Use the base planogram image - handle both local and deployed environments
     base_image_path = os.path.join(
         os.path.dirname(__file__), 
@@ -83,9 +91,9 @@ def create_planogram_config():
         "planogram_base.jpeg"
     )
     
-    # If the relative path doesn't work, try alternative paths for deployment
+    # Try alternative paths for deployment if the primary path doesn't work
+    image = None  # Initialize image variable
     if not os.path.exists(base_image_path):
-        # Try alternative paths for deployment
         alternative_paths = [
             os.path.join(os.getcwd(), "config", "planogram_image", "planogram_base.jpeg"),
             os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", "planogram_image", "planogram_base.jpeg"),
@@ -93,12 +101,17 @@ def create_planogram_config():
             "./config/planogram_image/planogram_base.jpeg"
         ]
         
+        # Try to find the image in alternative paths
+        image_found = False
         for alt_path in alternative_paths:
             if os.path.exists(alt_path):
                 base_image_path = alt_path
+                st.success(f"✅ Found base image at: {base_image_path}")
+                image_found = True
                 break
-        else:
-            # If still not found, show debug information
+        
+        if not image_found:
+            # If still not found, show debug information and create placeholder
             st.error(f"❌ Base planogram image not found")
             st.info("Debug information:")
             st.write(f"**Current working directory:** `{os.getcwd()}`")
@@ -112,7 +125,6 @@ def create_planogram_config():
             # Create a fallback placeholder image for testing
             st.warning("⚠️ Creating a placeholder image for testing purposes...")
             try:
-                from PIL import Image, ImageDraw
                 # Create a simple placeholder image
                 placeholder_image = Image.new('RGB', (800, 600), color='white')
                 draw = ImageDraw.Draw(placeholder_image)
@@ -131,14 +143,13 @@ def create_planogram_config():
                 
             except Exception as e:
                 st.error(f"❌ Could not create placeholder image: {e}")
-                                return
-            else:
-                # Image was found in one of the alternative paths
-                st.success(f"✅ Found base image at: {base_image_path}")
-        
-        # Load the base image
+                return
+    
+    # Load the base image if we haven't already loaded it (either from original path or placeholder)
+    if image is None:
         try:
             image = Image.open(base_image_path)
+            st.success(f"✅ Loaded base image from: {base_image_path}")
         except Exception as e:
             st.error(f"❌ Error loading base image: {e}")
             return
