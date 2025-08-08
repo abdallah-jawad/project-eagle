@@ -68,7 +68,6 @@ def create_planogram_config():
     try:
         from streamlit_drawable_canvas import st_canvas
         canvas_available = True
-        st.success("✅ Canvas component is available")
     except ImportError as e:
         canvas_available = False
         st.error(f"⚠️ Drawing component not available: {e}")
@@ -150,7 +149,6 @@ def create_planogram_config():
     if image is None:
         try:
             image = Image.open(base_image_path)
-            st.success(f"✅ Loaded base image from: {base_image_path}")
         except Exception as e:
             st.error(f"❌ Error loading base image: {e}")
             return
@@ -281,7 +279,7 @@ def main():
             st.info("Detection parameters are optimized and set automatically.")
 
         # Main content area - Better balanced layout
-        st.header("📤 Upload & Configuration")
+        st.header("📤 Upload & Analysis")
         
         # Upload section
         uploaded_file = st.file_uploader(
@@ -294,33 +292,42 @@ def main():
             # Load the original image for analysis
             original_image = Image.open(uploaded_file)
             
-            # Create a resized version for display
-            display_image = _resize_image_for_display(original_image, max_width=600)
+            # Store original image in session state
+            st.session_state.original_image = original_image
             
-            # Two columns for image and planogram
+            # Action buttons
+            col_btn1, col_btn2 = st.columns(2)
+            with col_btn1:
+                if st.button("🔍 Analyze Planogram", type="primary", use_container_width=True):
+                    with st.spinner("Analyzing planogram..."):
+                        # Run analysis with the original image
+                        results = st.session_state.analyzer.analyze_image(original_image)
+                        st.session_state.analysis_results = results
+                        st.success("Analysis complete!")
+            
+            with col_btn2:
+                if st.button("🗑️ Clear Results", use_container_width=True):
+                    st.session_state.analysis_results = None
+                    st.rerun()
+        else:
+            st.info("Please upload an image to begin analysis.")
+
+        # Results section - Show analysis image and expected planogram side by side
+        if st.session_state.analysis_results is not None:
+            st.header("📊 Analysis Results")
+            results = st.session_state.analysis_results
+            
+            # Two columns for analysis image and expected planogram
             col1, col2 = st.columns([1, 1])
             
             with col1:
-                st.subheader("📸 Uploaded Image")
-                st.image(display_image, caption="Uploaded Image", use_container_width=True)
-                
-                # Store original image in session state
-                st.session_state.original_image = original_image
-                
-                # Action buttons
-                col_btn1, col_btn2 = st.columns(2)
-                with col_btn1:
-                    if st.button("🔍 Analyze Planogram", type="primary", use_container_width=True):
-                        with st.spinner("Analyzing planogram..."):
-                            # Run analysis with the original image
-                            results = st.session_state.analyzer.analyze_image(original_image)
-                            st.session_state.analysis_results = results
-                            st.success("Analysis complete!")
-                
-                with col_btn2:
-                    if st.button("🗑️ Clear Results", use_container_width=True):
-                        st.session_state.analysis_results = None
-                        st.rerun()
+                st.subheader("🎯 Analysis Image (Detected Items)")
+                if results.annotated_image is not None:
+                    # Create a resized version for display
+                    display_image = _resize_image_for_display(results.annotated_image, max_width=600)
+                    st.image(display_image, caption="Detected Items", use_container_width=True)
+                else:
+                    st.warning("No annotated image available from analysis.")
             
             with col2:
                 st.subheader("📋 Expected Planogram")
@@ -355,33 +362,10 @@ def main():
                                 st.error(f"Could not recreate annotated planogram: {e}")
                 else:
                     st.info("Please select a planogram configuration to view the expected layout.")
-        else:
-            # Show placeholder when no image is uploaded
-            col1, col2 = st.columns([1, 1])
-            
-            with col1:
-                st.subheader("📸 Uploaded Image")
-                st.info("Please upload an image to begin analysis.")
-            
-            with col2:
-                st.subheader("📋 Expected Planogram")
-                st.info("Please select a planogram configuration to view the expected layout.")
 
-        # Results section
+        # Results section - Detailed analysis tabs
         if st.session_state.analysis_results is not None:
-            st.header("📊 Analysis Results")
             results = st.session_state.analysis_results
-            
-            # Display annotated image
-            st.subheader("🎯 Detected Items (Annotated)")
-            if results.annotated_image is not None:
-                # Create a resized version for display
-                display_image = _resize_image_for_display(results.annotated_image, max_width=1080)
-                
-                # Center the image using columns
-                col1, col2, col3 = st.columns([1, 2, 1])
-                with col2:
-                    st.image(display_image, caption="Detected Items")
             
             # Results in tabs (enhanced with detailed inventory views)
             results_tab1, results_tab2, results_tab3, results_tab4, results_tab5 = st.tabs([
