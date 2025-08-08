@@ -2,10 +2,6 @@
 
 This guide covers how to deploy the Planogram Vision Demo as a Streamlit application in various environments.
 
-## 🚨 Important: OpenCV Compatibility Fix
-
-If you encounter the error `libGL.so.1: cannot open shared object file: No such file or directory`, this is a common OpenCV issue in headless environments. The deployment scripts and Dockerfile provided here handle this automatically.
-
 ## Prerequisites
 
 - Python 3.8 or higher
@@ -14,25 +10,6 @@ If you encounter the error `libGL.so.1: cannot open shared object file: No such 
 - Sample planogram configuration files and images
 
 ## Quick Start
-
-### Option 1: Using Deployment Scripts (Recommended)
-
-**For Linux/macOS:**
-```bash
-# Make script executable
-chmod +x deploy.sh
-
-# Run deployment
-./deploy.sh
-```
-
-**For Windows:**
-```powershell
-# Run deployment
-.\deploy.ps1
-```
-
-### Option 2: Manual Setup
 
 1. **Install dependencies:**
    ```bash
@@ -87,23 +64,20 @@ streamlit run app.py
 ```
 
 ### 2. Docker Deployment
+Create a Dockerfile:
+```dockerfile
+FROM python:3.9-slim
 
-**Option A: Using Docker Compose (Recommended)**
-```bash
-# Build and run with docker-compose
-docker-compose up --build
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+COPY . .
+
+EXPOSE 8501
+
+CMD ["streamlit", "run", "app.py"]
 ```
-
-**Option B: Using Docker directly**
-```bash
-# Build the image
-docker build -t planogram-vision .
-
-# Run the container
-docker run -p 8501:8501 planogram-vision
-```
-
-The provided `Dockerfile` includes all necessary OpenCV dependencies and environment variables for headless deployment.
 
 ### 3. Cloud Deployment (Streamlit Cloud, Heroku, etc.)
 - Set environment variables in your cloud platform
@@ -142,26 +116,6 @@ demo/
 ```
 
 ## Troubleshooting
-
-### OpenCV Issues
-
-If you encounter the error `libGL.so.1: cannot open shared object file: No such file or directory`:
-
-1. **For Docker deployments:** The Dockerfile includes all necessary dependencies
-2. **For local deployments:** Use the deployment scripts which handle OpenCV setup
-3. **Manual fix:** Install `opencv-python-headless` instead of `opencv-python`:
-   ```bash
-   pip uninstall opencv-python
-   pip install opencv-python-headless
-   ```
-
-### System Dependencies
-
-If you need to install system dependencies manually (Linux):
-```bash
-sudo apt-get update
-sudo apt-get install -y libgl1-mesa-glx libglib2.0-0 libsm6 libxext6 libxrender1
-```
 
 ### Common Issues
 

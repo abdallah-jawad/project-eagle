@@ -1,23 +1,20 @@
-[global]
-developmentMode = false
-
 [server]
+# Streamlit server configuration for deployment
+headless = true
 port = 8501
 address = "0.0.0.0"
-headless = true
 enableCORS = false
 enableXsrfProtection = false
-maxUploadSize = 200
 
 [browser]
+# Browser configuration
 gatherUsageStats = false
-serverAddress = "localhost"
-serverPort = 8501
 
 [theme]
-primaryColor = "#FF6B6B"
-backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F0F2F6"
+# Theme configuration
+primaryColor = "#1f77b4"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f0f2f6"
 textColor = "#262730"
 
 [client]
